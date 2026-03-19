@@ -1,69 +1,44 @@
 import React from 'react';
-import type { Session, User } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
-import type { Profile } from '../types/models';
+import { getMe, clearToken, type AppUser } from '../lib/api';
 
 type AuthState = {
-  session: Session | null;
-  user: User | null;
-  profile: Profile | null;
+  user: AppUser | null;
   loading: boolean;
+  signOut: () => void;
+  refresh: () => Promise<void>;
 };
 
 const AuthContext = React.createContext<AuthState>({
-  session: null,
   user: null,
-  profile: null,
   loading: true,
+  signOut: () => {},
+  refresh: async () => {},
 });
 
-async function fetchProfile(userId: string): Promise<Profile | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .single();
-  if (error) return null;
-  return data as Profile;
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = React.useState<AuthState>({
-    session: null,
-    user: null,
-    profile: null,
-    loading: true,
-  });
+  const [user, setUser] = React.useState<AppUser | null>(null);
+  const [loading, setLoading] = React.useState(true);
 
-  React.useEffect(() => {
-    let active = true;
-
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!active) return;
-      const user = data.session?.user ?? null;
-      const profile = user ? await fetchProfile(user.id) : null;
-      setState({
-        session: data.session,
-        user,
-        profile,
-        loading: false,
-      });
-    });
-
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!active) return;
-      const user = session?.user ?? null;
-      const profile = user ? await fetchProfile(user.id) : null;
-      setState({ session, user, profile, loading: false });
-    });
-
-    return () => {
-      active = false;
-      sub.subscription.unsubscribe();
-    };
+  const loadUser = React.useCallback(async () => {
+    const me = await getMe();
+    setUser(me);
+    setLoading(false);
   }, []);
 
-  return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
+  React.useEffect(() => {
+    loadUser();
+  }, [loadUser]);
+
+  const signOut = React.useCallback(() => {
+    clearToken();
+    setUser(null);
+  }, []);
+
+  return (
+    <AuthContext.Provider value={{ user, loading, signOut, refresh: loadUser }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

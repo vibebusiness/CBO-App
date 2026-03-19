@@ -1,5 +1,4 @@
 import { Link, useLocation } from 'wouter';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../state/auth';
 
 function NavLink({ href, label }: { href: string; label: string }) {
@@ -20,21 +19,23 @@ function NavLink({ href, label }: { href: string; label: string }) {
 }
 
 export function AuthedLayout({ children }: { children: React.ReactNode }) {
-  const { user, profile } = useAuth();
-  const isAdmin = profile?.role === 'admin';
+  const { user, signOut } = useAuth();
 
   return (
     <div className="min-h-full">
       <div className="mx-auto max-w-md px-4 pb-24 pt-4">
         <header className="mb-4 flex items-center justify-between">
-          <div>
-            <div className="text-lg font-semibold">CBO Events</div>
-            <div className="text-xs text-white/60">Mobile-first check-in MVP</div>
+          <div className="flex items-center gap-3">
+            <img src="/cbo-logo.png" alt="CBO" className="h-8 w-auto" />
+            <div>
+              <div className="text-sm font-semibold">CBO Events</div>
+              <div className="text-xs text-white/60">Check-in app</div>
+            </div>
           </div>
           {user ? (
             <button
-              className="rounded-xl bg-white/10 px-3 py-2 text-sm text-white"
-              onClick={() => supabase.auth.signOut()}
+              className="rounded-xl bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/20"
+              onClick={signOut}
             >
               Sign out
             </button>
@@ -49,7 +50,7 @@ export function AuthedLayout({ children }: { children: React.ReactNode }) {
           <NavLink href="/calendar" label="Calendar" />
           <NavLink href="/events" label="Events" />
           <NavLink href="/profile" label="Profile" />
-          {isAdmin && <NavLink href="/admin" label="Admin" />}
+          {user?.role === 'admin' ? <NavLink href="/admin" label="Admin" /> : null}
         </div>
       </nav>
     </div>

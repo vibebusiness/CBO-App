@@ -7,22 +7,17 @@ import { ProfilePage } from './pages/Profile';
 import { AdminPage } from './pages/Admin';
 import { useAuth } from './state/auth';
 
-function AdminRoute() {
-  const { profile } = useAuth();
-  if (profile?.role !== 'admin') {
-    return <Redirect to="/events" />;
-  }
-  return <AdminPage />;
-}
-
 function AuthedRoutes() {
+  const { user } = useAuth();
   return (
     <AuthedLayout>
       <Switch>
         <Route path="/calendar" component={CalendarPage} />
         <Route path="/events" component={EventsPage} />
         <Route path="/profile" component={ProfilePage} />
-        <Route path="/admin" component={AdminRoute} />
+        <Route path="/admin">
+          {user?.role === 'admin' ? <AdminPage /> : <Redirect to="/events" />}
+        </Route>
         <Route>
           <Redirect to="/calendar" />
         </Route>
@@ -44,9 +39,12 @@ export default function App() {
 
   return (
     <Switch>
-      <Route path="/" component={AuthPage} />
-      <Route path="/auth" component={AuthPage} />
-
+      <Route path="/">
+        {user ? <Redirect to="/calendar" /> : <AuthPage />}
+      </Route>
+      <Route path="/auth">
+        {user ? <Redirect to="/calendar" /> : <AuthPage />}
+      </Route>
       <Route>
         {user ? <AuthedRoutes /> : <Redirect to="/" />}
       </Route>

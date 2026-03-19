@@ -2,7 +2,8 @@ import React from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { supabase } from '../lib/supabase';
+import { signIn, signUp, setToken } from '../lib/api';
+import { useAuth } from '../state/auth';
 
 const schema = z.object({
   email: z.string().email('Enter a valid email'),
@@ -14,6 +15,7 @@ type FormValues = z.infer<typeof schema>;
 export function AuthPage() {
   const [mode, setMode] = React.useState<'signin' | 'signup'>('signin');
   const [msg, setMsg] = React.useState<string | null>(null);
+  const { refresh } = useAuth();
 
   const {
     register,
@@ -30,21 +32,20 @@ export function AuthPage() {
 
   const onSubmit = async (values: FormValues) => {
     setMsg(null);
-    if (mode === 'signup') {
-      const { error } = await supabase.auth.signUp({
-        email: values.email,
-        password: values.password,
-      });
-      if (error) throw error;
-      setMsg('Account created — check your email to confirm, then sign in.');
-      switchMode('signin');
-      return;
+    try {
+      if (mode === 'signup') {
+        const res = await signUp(values.email, values.password);
+        setToken(res.token);
+        await refresh();
+      } else {
+        const res = await signIn(values.email, values.password);
+        setToken(res.token);
+        await refresh();
+      }
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      setMsg(err?.message ?? 'Something went wrong. Please try again.');
     }
-    const { error } = await supabase.auth.signInWithPassword({
-      email: values.email,
-      password: values.password,
-    });
-    if (error) throw error;
   };
 
   return (
@@ -69,11 +70,9 @@ export function AuthPage() {
             alt="Charlotte Business Owners"
             className="h-16 w-auto"
           />
-          <div className="text-center">
-            <p className="text-xs font-medium tracking-wider text-slate-400 uppercase">
-              Connect • Collaborate • Grow
-            </p>
-          </div>
+          <p className="text-xs font-medium tracking-wider text-slate-400 uppercase">
+            Connect • Collaborate • Grow
+          </p>
         </div>
 
         {/* Headline */}
@@ -110,21 +109,9 @@ export function AuthPage() {
         </div>
 
         {/* Form */}
-        <form
-          onSubmit={handleSubmit(async (v) => {
-            try {
-              await onSubmit(v);
-            } catch (e: unknown) {
-              const err = e as { message?: string };
-              setMsg(err?.message ?? 'Something went wrong. Please try again.');
-            }
-          })}
-          className="space-y-4"
-        >
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">
-              Email
-            </label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Email</label>
             <input
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               autoComplete="email"
@@ -132,15 +119,11 @@ export function AuthPage() {
               placeholder="you@example.com"
               {...register('email')}
             />
-            {errors.email ? (
-              <p className="mt-1 text-xs text-red-500">{errors.email.message}</p>
-            ) : null}
+            {errors.email ? <p className="mt-1 text-xs text-red-500">{errors.email.message}</p> : null}
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">
-              Password
-            </label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Password</label>
             <input
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               type="password"
@@ -148,9 +131,7 @@ export function AuthPage() {
               placeholder="8+ characters"
               {...register('password')}
             />
-            {errors.password ? (
-              <p className="mt-1 text-xs text-red-500">{errors.password.message}</p>
-            ) : null}
+            {errors.password ? <p className="mt-1 text-xs text-red-500">{errors.password.message}</p> : null}
           </div>
 
           {msg ? (
@@ -164,11 +145,7 @@ export function AuthPage() {
             disabled={isSubmitting}
             className="w-full rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-50"
           >
-            {isSubmitting
-              ? 'Please wait…'
-              : mode === 'signin'
-              ? 'Log in'
-              : 'Create account'}
+            {isSubmitting ? 'Please wait…' : mode === 'signin' ? 'Log in' : 'Create account'}
           </button>
         </form>
       </div>
