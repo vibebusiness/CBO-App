@@ -218,10 +218,47 @@ app.get('/api/events/:id/raffle/participants', authMiddleware, adminOnly, async 
       `SELECT c.*, u.email, u.full_name
        FROM checkins c JOIN users u ON c.user_id = u.id
        WHERE c.event_id = $1
+         AND c.user_id NOT IN (
+           SELECT user_id FROM raffle_winners WHERE event_id = $1
+         )
        ORDER BY c.checked_in_at ASC`,
       [req.params.id]
     );
     res.json(result.rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/api/events/:id/raffle/winners', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT rw.*, u.email, u.full_name
+       FROM raffle_winners rw JOIN users u ON rw.user_id = u.id
+       WHERE rw.event_id = $1
+       ORDER BY rw.won_at ASC`,
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/events/:id/raffle/winner', authMiddleware, adminOnly, async (req, res) => {
+  const { user_id } = req.body || {};
+  if (!user_id) return res.status(400).json({ error: 'user_id required' });
+  try {
+    const result = await pool.query(
+      `INSERT INTO raffle_winners (event_id, user_id)
+       VALUES ($1, $2)
+       ON CONFLICT (event_id, user_id) DO NOTHING
+       RETURNING *`,
+      [req.params.id, user_id]
+    );
+    res.json(result.rows[0] ?? { already_won: true });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Server error' });

@@ -2,7 +2,6 @@ import React from 'react';
 import {
   getEvents, createEvent, updateEvent, deleteEvent,
   getCheckIns, removeCheckIn, createInviteLink, uploadImage,
-  getRaffleParticipants,
 } from '../lib/api';
 import type { Event, CheckIn } from '../types/models';
 import { fmtET, etInputToUtc, utcToEtInput } from '../lib/tz';
@@ -181,7 +180,7 @@ function CheckInRoster({ event, onClose }: { event: Event; onClose: () => void }
   );
 }
 
-type RaffleState = { event: Event; participants: CheckIn[] } | null;
+type RaffleState = Event | null;
 
 export function AdminPage() {
   const [events, setEvents] = React.useState<Event[]>([]);
@@ -191,7 +190,6 @@ export function AdminPage() {
   const [saving, setSaving] = React.useState(false);
   const [rosterEvent, setRosterEvent] = React.useState<Event | null>(null);
   const [raffleState, setRaffleState] = React.useState<RaffleState>(null);
-  const [raffleLoading, setRaffleLoading] = React.useState<string | null>(null);
   const [inviteLink, setInviteLink] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState<'events' | 'invite'>('events');
 
@@ -251,16 +249,8 @@ export function AdminPage() {
     load();
   };
 
-  const handleRunRaffle = async (event: Event) => {
-    setRaffleLoading(event.id);
-    try {
-      const participants = await getRaffleParticipants(event.id);
-      setRaffleState({ event, participants });
-    } catch (e) {
-      alert((e as Error).message);
-    } finally {
-      setRaffleLoading(null);
-    }
+  const handleRunRaffle = (event: Event) => {
+    setRaffleState(event);
   };
 
   const handleGenerateInvite = async () => {
@@ -435,10 +425,9 @@ export function AdminPage() {
                       {event.has_raffle && (
                         <button
                           onClick={() => handleRunRaffle(event)}
-                          disabled={raffleLoading === event.id}
-                          className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-100 disabled:opacity-50"
+                          className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-100"
                         >
-                          {raffleLoading === event.id ? '…' : '🎲 Raffle'}
+                          🎲 Raffle
                         </button>
                       )}
                       <button onClick={() => openEdit(event)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">
@@ -485,8 +474,8 @@ export function AdminPage() {
 
       {raffleState && (
         <RaffleModal
-          eventTitle={raffleState.event.title}
-          participants={raffleState.participants}
+          eventId={raffleState.id}
+          eventTitle={raffleState.title}
           onClose={() => setRaffleState(null)}
         />
       )}

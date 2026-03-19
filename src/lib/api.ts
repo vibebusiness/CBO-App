@@ -129,6 +129,17 @@ export async function getRaffleParticipants(eventId: string): Promise<CheckIn[]>
   return request(`/events/${eventId}/raffle/participants`);
 }
 
+export async function getRaffleWinners(eventId: string): Promise<CheckIn[]> {
+  return request(`/events/${eventId}/raffle/winners`);
+}
+
+export async function recordRaffleWinner(eventId: string, userId: string): Promise<void> {
+  return request(`/events/${eventId}/raffle/winner`, {
+    method: 'POST',
+    body: JSON.stringify({ user_id: userId }),
+  });
+}
+
 // Admin invite
 export async function createInviteLink(): Promise<{ token: string; link: string }> {
   return request('/admin/invite', { method: 'POST' });
