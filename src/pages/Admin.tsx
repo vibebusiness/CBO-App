@@ -124,6 +124,33 @@ function ImageUpload({ value, onChange }: { value: string; onChange: (url: strin
   );
 }
 
+function exportCheckInsCSV(event: Event, checkins: CheckIn[]) {
+  const safeTitle = event.title.replace(/[^a-z0-9]/gi, '_').replace(/_+/g, '_');
+  const eventDate = fmtET(event.start_at, 'yyyy-MM-dd');
+  const filename = `${safeTitle}_${eventDate}_checkins.csv`;
+
+  const rows = [
+    ['Name', 'Email', 'Check-in Time (ET)'],
+    ...checkins.map((c) => [
+      c.full_name ?? '',
+      c.email ?? '',
+      fmtET(c.checked_in_at, 'MMM d yyyy h:mm a'),
+    ]),
+  ];
+
+  const csv = rows
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    .join('\r\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function CheckInRoster({ event, onClose }: { event: Event; onClose: () => void }) {
   const [checkins, setCheckins] = React.useState<CheckIn[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -147,10 +174,21 @@ function CheckInRoster({ event, onClose }: { event: Event; onClose: () => void }
           <button onClick={onClose} className="text-xl text-slate-400 hover:text-slate-700">✕</button>
         </div>
 
-        <div className="mb-3">
+        <div className="mb-3 flex items-center justify-between">
           <span className="text-sm text-slate-600">
             {loading ? '—' : checkins.length} {checkins.length === 1 ? 'check-in' : 'check-ins'}
           </span>
+          {!loading && checkins.length > 0 && (
+            <button
+              onClick={() => exportCheckInsCSV(event, checkins)}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+              Export CSV
+            </button>
+          )}
         </div>
 
         {loading ? (
