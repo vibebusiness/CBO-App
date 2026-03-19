@@ -356,5 +356,14 @@ app.get('/api/admin/invite/verify', async (req, res) => {
   }
 });
 
-const PORT = 3001;
-app.listen(PORT, () => console.log(`API server running on port ${PORT}`));
+// In production, serve the built frontend and handle SPA routing
+if (process.env.NODE_ENV === 'production') {
+  const distPath = path.join(__dirname, '../dist');
+  app.use(express.static(distPath));
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, '0.0.0.0', () => console.log(`API server running on port ${PORT}`));
