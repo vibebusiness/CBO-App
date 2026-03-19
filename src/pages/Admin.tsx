@@ -2,19 +2,22 @@ import React from 'react';
 import {
   getEvents, createEvent, updateEvent, deleteEvent,
   getCheckIns, removeCheckIn, createInviteLink, uploadImage,
+  getRaffleParticipants,
 } from '../lib/api';
 import type { Event, CheckIn } from '../types/models';
 import { fmtET, etInputToUtc, utcToEtInput } from '../lib/tz';
+import { RaffleModal } from '../components/RaffleModal';
 
 type EventForm = {
   title: string;
   description: string;
-  start_at: string;  // ET datetime-local string
-  end_at: string;    // ET datetime-local string
+  start_at: string;
+  end_at: string;
   location_name: string;
   location_address: string;
   status: 'draft' | 'published';
   image_url: string;
+  has_raffle: boolean;
 };
 
 const EMPTY_FORM: EventForm = {
@@ -26,6 +29,7 @@ const EMPTY_FORM: EventForm = {
   location_address: '',
   status: 'draft',
   image_url: '',
+  has_raffle: false,
 };
 
 function Input({ label, ...props }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
@@ -36,6 +40,37 @@ function Input({ label, ...props }: { label: string } & React.InputHTMLAttribute
         className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
         {...props}
       />
+    </div>
+  );
+}
+
+function Toggle({ label, sublabel, checked, onChange }: {
+  label: string;
+  sublabel?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <div>
+        <div className="text-sm font-medium text-slate-800">{label}</div>
+        {sublabel && <div className="text-xs text-slate-400">{sublabel}</div>}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        className={[
+          'relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200',
+          checked ? 'bg-slate-900' : 'bg-slate-300',
+        ].join(' ')}
+      >
+        <span className={[
+          'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200',
+          checked ? 'translate-x-6' : 'translate-x-1',
+        ].join(' ')} />
+      </button>
     </div>
   );
 }
@@ -146,6 +181,8 @@ function CheckInRoster({ event, onClose }: { event: Event; onClose: () => void }
   );
 }
 
+type RaffleState = { event: Event; participants: CheckIn[] } | null;
+
 export function AdminPage() {
   const [events, setEvents] = React.useState<Event[]>([]);
   const [form, setForm] = React.useState<EventForm>(EMPTY_FORM);
@@ -153,6 +190,8 @@ export function AdminPage() {
   const [showForm, setShowForm] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [rosterEvent, setRosterEvent] = React.useState<Event | null>(null);
+  const [raffleState, setRaffleState] = React.useState<RaffleState>(null);
+  const [raffleLoading, setRaffleLoading] = React.useState<string | null>(null);
   const [inviteLink, setInviteLink] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState<'events' | 'invite'>('events');
 
@@ -165,13 +204,13 @@ export function AdminPage() {
     setForm({
       title: event.title,
       description: event.description,
-      // Pre-fill datetime-local inputs in ET so admins see the ET time they entered
       start_at: utcToEtInput(event.start_at),
       end_at: event.end_at ? utcToEtInput(event.end_at) : '',
       location_name: event.location_name ?? '',
       location_address: event.location_address ?? '',
       status: event.status,
       image_url: event.image_url ?? '',
+      has_raffle: event.has_raffle ?? false,
     });
     setEditingId(event.id);
     setShowForm(true);
@@ -184,13 +223,13 @@ export function AdminPage() {
       const payload = {
         title: form.title,
         description: form.description,
-        // Interpret the datetime-local value as Eastern Time before sending to server
         start_at: etInputToUtc(form.start_at),
         end_at: form.end_at ? etInputToUtc(form.end_at) : undefined,
         location_name: form.location_name,
         location_address: form.location_address,
         status: form.status,
         image_url: form.image_url || undefined,
+        has_raffle: form.has_raffle,
       };
       if (editingId) {
         await updateEvent(editingId, payload);
@@ -210,6 +249,18 @@ export function AdminPage() {
     if (!confirm('Delete this event and all its check-ins?')) return;
     await deleteEvent(id);
     load();
+  };
+
+  const handleRunRaffle = async (event: Event) => {
+    setRaffleLoading(event.id);
+    try {
+      const participants = await getRaffleParticipants(event.id);
+      setRaffleState({ event, participants });
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setRaffleLoading(null);
+    }
   };
 
   const handleGenerateInvite = async () => {
@@ -274,7 +325,6 @@ export function AdminPage() {
                 />
               </div>
 
-              {/* Time inputs — labels clarify ET */}
               <Input
                 label="Start (Eastern Time) *"
                 type="datetime-local"
@@ -314,6 +364,13 @@ export function AdminPage() {
                   <option value="published">Published (visible to members)</option>
                 </select>
               </div>
+
+              <Toggle
+                label="This event has a raffle"
+                sublabel="Members who check in are automatically entered"
+                checked={form.has_raffle}
+                onChange={(v) => setForm((f) => ({ ...f, has_raffle: v }))}
+              />
 
               <div className="flex gap-2">
                 <button
@@ -357,17 +414,33 @@ export function AdminPage() {
                       {event.location_name && (
                         <div className="text-xs text-slate-400">📍 {event.location_name}</div>
                       )}
-                      <span className={[
-                        'mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium',
-                        event.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700',
-                      ].join(' ')}>
-                        {event.status}
-                      </span>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        <span className={[
+                          'inline-block rounded-full px-2 py-0.5 text-xs font-medium',
+                          event.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700',
+                        ].join(' ')}>
+                          {event.status}
+                        </span>
+                        {event.has_raffle && (
+                          <span className="inline-block rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
+                            🎟️ Raffle
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex shrink-0 flex-col gap-1.5">
                       <button onClick={() => setRosterEvent(event)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">
                         Check-ins
                       </button>
+                      {event.has_raffle && (
+                        <button
+                          onClick={() => handleRunRaffle(event)}
+                          disabled={raffleLoading === event.id}
+                          className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-100 disabled:opacity-50"
+                        >
+                          {raffleLoading === event.id ? '…' : '🎲 Raffle'}
+                        </button>
+                      )}
                       <button onClick={() => openEdit(event)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">
                         Edit
                       </button>
@@ -409,6 +482,14 @@ export function AdminPage() {
       )}
 
       {rosterEvent && <CheckInRoster event={rosterEvent} onClose={() => setRosterEvent(null)} />}
+
+      {raffleState && (
+        <RaffleModal
+          eventTitle={raffleState.event.title}
+          participants={raffleState.participants}
+          onClose={() => setRaffleState(null)}
+        />
+      )}
     </div>
   );
 }

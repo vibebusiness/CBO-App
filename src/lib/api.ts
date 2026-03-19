@@ -124,6 +124,11 @@ export async function removeCheckIn(eventId: string, userId: string): Promise<vo
   return request(`/events/${eventId}/checkins/${userId}`, { method: 'DELETE' });
 }
 
+// Raffle
+export async function getRaffleParticipants(eventId: string): Promise<CheckIn[]> {
+  return request(`/events/${eventId}/raffle/participants`);
+}
+
 // Admin invite
 export async function createInviteLink(): Promise<{ token: string; link: string }> {
   return request('/admin/invite', { method: 'POST' });

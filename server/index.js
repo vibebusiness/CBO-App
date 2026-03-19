@@ -178,13 +178,13 @@ app.get('/api/events/:id', authMiddleware, async (req, res) => {
 });
 
 app.post('/api/events', authMiddleware, adminOnly, async (req, res) => {
-  const { title, description, start_at, end_at, location_name, location_address, status, image_url } = req.body || {};
+  const { title, description, start_at, end_at, location_name, location_address, status, image_url, has_raffle } = req.body || {};
   if (!title || !start_at) return res.status(400).json({ error: 'Title and start time required' });
   try {
     const result = await pool.query(
-      `INSERT INTO events (title, description, start_at, end_at, location_name, location_address, status, image_url, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [title, description ?? '', start_at, end_at ?? null, location_name ?? '', location_address ?? '', status ?? 'draft', image_url ?? null, req.user.id]
+      `INSERT INTO events (title, description, start_at, end_at, location_name, location_address, status, image_url, has_raffle, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [title, description ?? '', start_at, end_at ?? null, location_name ?? '', location_address ?? '', status ?? 'draft', image_url ?? null, has_raffle ?? false, req.user.id]
     );
     res.json(result.rows[0]);
   } catch (e) {
@@ -194,16 +194,34 @@ app.post('/api/events', authMiddleware, adminOnly, async (req, res) => {
 });
 
 app.patch('/api/events/:id', authMiddleware, adminOnly, async (req, res) => {
-  const { title, description, start_at, end_at, location_name, location_address, status, image_url } = req.body || {};
+  const { title, description, start_at, end_at, location_name, location_address, status, image_url, has_raffle } = req.body || {};
   try {
     const result = await pool.query(
       `UPDATE events SET title = $1, description = $2, start_at = $3, end_at = $4,
-       location_name = $5, location_address = $6, status = $7, image_url = $8
-       WHERE id = $9 RETURNING *`,
-      [title, description, start_at, end_at ?? null, location_name, location_address, status, image_url ?? null, req.params.id]
+       location_name = $5, location_address = $6, status = $7, image_url = $8, has_raffle = $9
+       WHERE id = $10 RETURNING *`,
+      [title, description, start_at, end_at ?? null, location_name, location_address, status, image_url ?? null, has_raffle ?? false, req.params.id]
     );
     if (!result.rows[0]) return res.status(404).json({ error: 'Event not found' });
     res.json(result.rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── Raffle ─────────────────────────────────────────────────────────────────
+
+app.get('/api/events/:id/raffle/participants', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT c.*, u.email, u.full_name
+       FROM checkins c JOIN users u ON c.user_id = u.id
+       WHERE c.event_id = $1
+       ORDER BY c.checked_in_at ASC`,
+      [req.params.id]
+    );
+    res.json(result.rows);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Server error' });
