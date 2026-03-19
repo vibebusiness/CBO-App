@@ -1,4 +1,7 @@
 import React from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Underline from '@tiptap/extension-underline';
 import {
   getEvents, createEvent, updateEvent, deleteEvent,
   getCheckIns, removeCheckIn, createInviteLink, uploadImage,
@@ -180,6 +183,46 @@ function CheckInRoster({ event, onClose }: { event: Event; onClose: () => void }
   );
 }
 
+const TOOLBAR_BTN = 'rounded px-1.5 py-0.5 text-xs font-medium text-slate-600 hover:bg-slate-200 disabled:opacity-40';
+
+function RichTextEditor({ value, onChange }: { value: string; onChange: (html: string) => void }) {
+  const editor = useEditor({
+    extensions: [StarterKit, Underline],
+    content: value,
+    onUpdate({ editor }) {
+      onChange(editor.getHTML());
+    },
+  });
+
+  React.useEffect(() => {
+    if (editor && editor.getHTML() !== value) {
+      editor.commands.setContent(value, false);
+    }
+  }, [value, editor]);
+
+  if (!editor) return null;
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 focus-within:border-slate-400 focus-within:ring-2 focus-within:ring-slate-200">
+      <div className="flex flex-wrap gap-1 border-b border-slate-200 bg-white px-2 py-1.5">
+        <button type="button" onClick={() => editor.chain().focus().toggleBold().run()} className={[TOOLBAR_BTN, editor.isActive('bold') ? 'bg-slate-200' : ''].join(' ')}>B</button>
+        <button type="button" onClick={() => editor.chain().focus().toggleItalic().run()} className={[TOOLBAR_BTN, editor.isActive('italic') ? 'bg-slate-200' : ''].join(' ')}><em>I</em></button>
+        <button type="button" onClick={() => editor.chain().focus().toggleUnderline().run()} className={[TOOLBAR_BTN, editor.isActive('underline') ? 'bg-slate-200' : ''].join(' ')}><u>U</u></button>
+        <span className="mx-0.5 w-px self-stretch bg-slate-200" />
+        <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={[TOOLBAR_BTN, editor.isActive('heading', { level: 2 }) ? 'bg-slate-200' : ''].join(' ')}>H2</button>
+        <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} className={[TOOLBAR_BTN, editor.isActive('heading', { level: 3 }) ? 'bg-slate-200' : ''].join(' ')}>H3</button>
+        <span className="mx-0.5 w-px self-stretch bg-slate-200" />
+        <button type="button" onClick={() => editor.chain().focus().toggleBulletList().run()} className={[TOOLBAR_BTN, editor.isActive('bulletList') ? 'bg-slate-200' : ''].join(' ')}>• List</button>
+        <button type="button" onClick={() => editor.chain().focus().toggleOrderedList().run()} className={[TOOLBAR_BTN, editor.isActive('orderedList') ? 'bg-slate-200' : ''].join(' ')}>1. List</button>
+      </div>
+      <EditorContent
+        editor={editor}
+        className="prose prose-sm max-w-none px-3 py-2.5 text-sm text-slate-900 [&_.ProseMirror]:min-h-[80px] [&_.ProseMirror]:outline-none"
+      />
+    </div>
+  );
+}
+
 type RaffleState = Event | null;
 
 export function AdminPage() {
@@ -306,12 +349,9 @@ export function AdminPage() {
 
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">Description</label>
-                <textarea
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-                  rows={3}
-                  placeholder="What's this event about?"
+                <RichTextEditor
                   value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  onChange={(html) => setForm((f) => ({ ...f, description: html }))}
                 />
               </div>
 

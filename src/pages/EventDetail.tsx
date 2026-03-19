@@ -147,7 +147,10 @@ export function EventDetailPage() {
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
             About this event
           </h2>
-          <p className="text-sm leading-relaxed text-slate-700">{event.description}</p>
+          <div
+            className="prose prose-sm max-w-none text-slate-700"
+            dangerouslySetInnerHTML={{ __html: event.description }}
+          />
         </div>
       )}
 

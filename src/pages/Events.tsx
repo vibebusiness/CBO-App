@@ -45,7 +45,7 @@ function EventCard({ event }: { event: Event }) {
 
           {/* Description snippet */}
           {event.description && (
-            <p className="mt-3 line-clamp-2 text-sm text-slate-500">{event.description}</p>
+            <p className="mt-3 line-clamp-2 text-sm text-slate-500">{event.description.replace(/<[^>]*>/g, '')}</p>
           )}
 
           {/* CTA */}

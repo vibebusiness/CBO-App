@@ -138,7 +138,7 @@ export function CalendarPage() {
                       </div>
                     </div>
                     {event.description && (
-                      <p className="mt-2 line-clamp-2 text-sm text-slate-500">{event.description}</p>
+                      <p className="mt-2 line-clamp-2 text-sm text-slate-500">{event.description.replace(/<[^>]*>/g, '')}</p>
                     )}
                   </div>
               </Link>
