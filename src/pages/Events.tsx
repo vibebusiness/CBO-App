@@ -36,7 +36,7 @@ function EventCard({ event, user }: { event: Event; user: AppUser | null }) {
         setMsg('You are already checked in!');
       } else {
         setMyCheckin(res as CheckIn);
-        setMsg('Checked in!');
+        setMsg(null);
       }
     } catch (e: unknown) {
       setMsg((e as Error).message);
@@ -48,43 +48,42 @@ function EventCard({ event, user }: { event: Event; user: AppUser | null }) {
   const start = parseISO(event.start_at);
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       {/* Date badge + title */}
       <div className="flex items-start gap-3">
-        <div className="flex min-w-[48px] flex-col items-center rounded-xl bg-white/10 px-2 py-2 text-center">
-          <span className="text-xs font-medium uppercase text-white/60">{format(start, 'MMM')}</span>
-          <span className="text-xl font-bold leading-none text-white">{format(start, 'd')}</span>
+        <div className="flex min-w-[48px] flex-col items-center rounded-xl bg-slate-100 px-2 py-2 text-center">
+          <span className="text-xs font-medium uppercase text-slate-500">{format(start, 'MMM')}</span>
+          <span className="text-xl font-bold leading-none text-slate-900">{format(start, 'd')}</span>
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-white leading-tight">{event.title}</div>
-          <div className="mt-0.5 text-xs text-white/60">{format(start, 'EEEE · h:mm a')}</div>
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold leading-tight text-slate-900">{event.title}</div>
+          <div className="mt-0.5 text-xs text-slate-500">{format(start, 'EEEE · h:mm a')}</div>
           {event.location_name && (
-            <div className="mt-0.5 text-xs text-white/50">📍 {event.location_name}</div>
+            <div className="mt-0.5 text-xs text-slate-400">📍 {event.location_name}</div>
           )}
           {event.status === 'draft' && (
-            <span className="mt-1 inline-block rounded-full bg-yellow-500/20 px-2 py-0.5 text-xs text-yellow-300">
+            <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
               Draft
             </span>
           )}
         </div>
       </div>
 
-      {event.description ? (
-        <p className="mt-3 text-sm text-white/70 leading-relaxed">{event.description}</p>
-      ) : null}
-
-      {event.location_address ? (
-        <p className="mt-1 text-xs text-white/40">{event.location_address}</p>
-      ) : null}
+      {event.description && (
+        <p className="mt-3 text-sm leading-relaxed text-slate-600">{event.description}</p>
+      )}
+      {event.location_address && (
+        <p className="mt-1 text-xs text-slate-400">{event.location_address}</p>
+      )}
 
       {/* Check-in area */}
       <div className="mt-4">
         {myCheckin ? (
-          <div className="flex items-center gap-2 rounded-xl bg-green-500/15 px-4 py-3">
-            <span className="text-base">✓</span>
+          <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+            <span className="text-base text-green-600">✓</span>
             <div>
-              <div className="text-sm font-medium text-green-300">Checked in</div>
-              <div className="text-xs text-green-400/70">
+              <div className="text-sm font-medium text-green-700">Checked in</div>
+              <div className="text-xs text-green-600/70">
                 {format(parseISO(myCheckin.checked_in_at), 'h:mm a')}
               </div>
             </div>
@@ -93,19 +92,19 @@ function EventCard({ event, user }: { event: Event; user: AppUser | null }) {
           <button
             onClick={handleCheckIn}
             disabled={loading}
-            className="w-full rounded-xl bg-white py-3 text-sm font-semibold text-[#0b1220] transition active:scale-95 disabled:opacity-50"
+            className="w-full rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 active:scale-95 disabled:opacity-50"
           >
             {loading ? 'Checking in…' : 'Check in'}
           </button>
         ) : (
-          <div className="rounded-xl bg-white/5 px-4 py-3 text-center text-xs text-white/40">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-center text-xs text-slate-400">
             {isAfter(new Date(), addHours(parseISO(event.start_at), 6))
               ? 'Check-in is closed'
               : 'Check-in opens 2 hours before the event'}
           </div>
         )}
         {msg && !myCheckin && (
-          <p className="mt-2 text-center text-xs text-white/60">{msg}</p>
+          <p className="mt-2 text-center text-xs text-slate-500">{msg}</p>
         )}
       </div>
     </div>
@@ -133,7 +132,7 @@ export function EventsPage() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center text-sm text-white/50">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-400 shadow-sm">
         Loading events…
       </div>
     );
@@ -141,10 +140,10 @@ export function EventsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-base font-semibold text-white">Upcoming Events</h1>
+      <h1 className="text-base font-semibold text-slate-900">Upcoming Events</h1>
 
       {upcoming.length === 0 ? (
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center text-sm text-white/50">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-400 shadow-sm">
           No upcoming events right now. Check back soon!
         </div>
       ) : (
@@ -157,7 +156,7 @@ export function EventsPage() {
 
       {past.length > 0 && (
         <>
-          <h2 className="pt-2 text-sm font-medium text-white/50">Past events</h2>
+          <h2 className="pt-2 text-sm font-medium text-slate-400">Past events</h2>
           <div className="space-y-3">
             {past.map((e) => (
               <EventCard key={e.id} event={e} user={user} />

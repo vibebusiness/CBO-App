@@ -1,6 +1,9 @@
 import React from 'react';
 import { format, parseISO } from 'date-fns';
-import { getEvents, createEvent, updateEvent, deleteEvent, getCheckIns, removeCheckIn, createInviteLink } from '../lib/api';
+import {
+  getEvents, createEvent, updateEvent, deleteEvent,
+  getCheckIns, removeCheckIn, createInviteLink,
+} from '../lib/api';
 import type { Event, CheckIn } from '../types/models';
 
 type EventForm = {
@@ -26,9 +29,9 @@ const EMPTY_FORM: EventForm = {
 function Input({ label, ...props }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-white/70">{label}</label>
+      <label className="mb-1 block text-xs font-medium text-slate-600">{label}</label>
       <input
-        className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-white/30"
+        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
         {...props}
       />
     </div>
@@ -54,46 +57,46 @@ function CheckInRoster({ event, onClose }: { event: Event; onClose: () => void }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 sm:items-center">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0b1220] p-5">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h3 className="font-semibold text-white">{event.title}</h3>
-            <p className="text-xs text-white/50">
+            <h3 className="font-semibold text-slate-900">{event.title}</h3>
+            <p className="text-xs text-slate-500">
               {format(parseISO(event.start_at), 'MMM d · h:mm a')}
             </p>
           </div>
-          <button onClick={onClose} className="text-white/50 hover:text-white text-xl">✕</button>
+          <button onClick={onClose} className="text-xl text-slate-400 hover:text-slate-700">✕</button>
         </div>
 
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm text-white/70">
+        <div className="mb-3">
+          <span className="text-sm text-slate-600">
             {loading ? '—' : checkins.length} {checkins.length === 1 ? 'check-in' : 'check-ins'}
           </span>
         </div>
 
         {loading ? (
-          <div className="py-6 text-center text-sm text-white/40">Loading…</div>
+          <div className="py-6 text-center text-sm text-slate-400">Loading…</div>
         ) : checkins.length === 0 ? (
-          <div className="py-6 text-center text-sm text-white/40">No check-ins yet</div>
+          <div className="py-6 text-center text-sm text-slate-400">No check-ins yet</div>
         ) : (
           <div className="max-h-72 space-y-2 overflow-y-auto">
             {checkins.map((c) => (
-              <div key={c.id} className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2">
+              <div key={c.id} className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
                 <div>
-                  <div className="text-sm font-medium text-white">
+                  <div className="text-sm font-medium text-slate-900">
                     {c.full_name ?? c.email}
                   </div>
                   {c.full_name && (
-                    <div className="text-xs text-white/50">{c.email}</div>
+                    <div className="text-xs text-slate-500">{c.email}</div>
                   )}
-                  <div className="text-xs text-white/40">
+                  <div className="text-xs text-slate-400">
                     {format(parseISO(c.checked_in_at), 'h:mm a')}
                   </div>
                 </div>
                 <button
                   onClick={() => handleRemove(c.user_id)}
-                  className="text-xs text-red-400 hover:text-red-300"
+                  className="text-xs text-red-500 hover:text-red-700"
                 >
                   Remove
                 </button>
@@ -117,7 +120,6 @@ export function AdminPage() {
   const [tab, setTab] = React.useState<'events' | 'invite'>('events');
 
   const load = () => getEvents(true).then(setEvents);
-
   React.useEffect(() => { load(); }, []);
 
   const openNew = () => {
@@ -130,7 +132,7 @@ export function AdminPage() {
     setForm({
       title: event.title,
       description: event.description,
-      start_at: event.start_at.slice(0, 16), // datetime-local format
+      start_at: event.start_at.slice(0, 16),
       end_at: event.end_at?.slice(0, 16) ?? '',
       location_name: event.location_name ?? '',
       location_address: event.location_address ?? '',
@@ -145,15 +147,18 @@ export function AdminPage() {
     setSaving(true);
     try {
       const payload = {
-        ...form,
-        end_at: form.end_at || undefined,
+        title: form.title,
+        description: form.description,
         start_at: new Date(form.start_at).toISOString(),
-        end_at_iso: form.end_at ? new Date(form.end_at).toISOString() : undefined,
+        end_at: form.end_at ? new Date(form.end_at).toISOString() : undefined,
+        location_name: form.location_name,
+        location_address: form.location_address,
+        status: form.status,
       };
       if (editingId) {
-        await updateEvent(editingId, { ...payload, end_at: payload.end_at_iso });
+        await updateEvent(editingId, payload);
       } else {
-        await createEvent({ ...payload, end_at: payload.end_at_iso });
+        await createEvent(payload);
       }
       await load();
       setShowForm(false);
@@ -173,8 +178,7 @@ export function AdminPage() {
   const handleGenerateInvite = async () => {
     try {
       const res = await createInviteLink();
-      const fullLink = `${window.location.origin}${res.link}`;
-      setInviteLink(fullLink);
+      setInviteLink(`${window.location.origin}${res.link}`);
     } catch (e) {
       alert((e as Error).message);
     }
@@ -182,17 +186,19 @@ export function AdminPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-base font-semibold text-white">Admin Dashboard</h1>
+      <h1 className="text-base font-semibold text-slate-900">Admin Dashboard</h1>
 
       {/* Tabs */}
-      <div className="flex rounded-xl bg-white/5 p-1">
+      <div className="flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
         {(['events', 'invite'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={[
               'flex-1 rounded-lg py-2 text-sm font-medium capitalize transition',
-              tab === t ? 'bg-white text-[#0b1220]' : 'text-white/60 hover:text-white',
+              tab === t
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'text-slate-500 hover:text-slate-700',
             ].join(' ')}
           >
             {t === 'events' ? 'Events' : 'Invite Admins'}
@@ -204,15 +210,15 @@ export function AdminPage() {
         <>
           <button
             onClick={openNew}
-            className="w-full rounded-xl bg-white py-3 text-sm font-semibold text-[#0b1220]"
+            className="w-full rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
           >
             + Create event
           </button>
 
           {/* Event form */}
           {showForm && (
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-4">
-              <h2 className="text-sm font-semibold text-white">
+            <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-sm font-semibold text-slate-800">
                 {editingId ? 'Edit event' : 'New event'}
               </h2>
 
@@ -224,9 +230,9 @@ export function AdminPage() {
               />
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-white/70">Description</label>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Description</label>
                 <textarea
-                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-white/30"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                   rows={3}
                   placeholder="What's this event about?"
                   value={form.description}
@@ -263,11 +269,13 @@ export function AdminPage() {
               />
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-white/70">Status</label>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Status</label>
                 <select
-                  className="w-full rounded-xl border border-white/10 bg-[#0b1220] px-3 py-2.5 text-sm text-white outline-none"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400"
                   value={form.status}
-                  onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as 'draft' | 'published' }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, status: e.target.value as 'draft' | 'published' }))
+                  }
                 >
                   <option value="draft">Draft (admins only)</option>
                   <option value="published">Published (visible to members)</option>
@@ -278,13 +286,13 @@ export function AdminPage() {
                 <button
                   onClick={handleSave}
                   disabled={saving || !form.title || !form.start_at}
-                  className="flex-1 rounded-xl bg-white py-2.5 text-sm font-semibold text-[#0b1220] disabled:opacity-40"
+                  className="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
                 >
                   {saving ? 'Saving…' : editingId ? 'Save changes' : 'Create event'}
                 </button>
                 <button
                   onClick={() => setShowForm(false)}
-                  className="rounded-xl bg-white/10 px-4 py-2.5 text-sm text-white"
+                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
                 >
                   Cancel
                 </button>
@@ -295,48 +303,48 @@ export function AdminPage() {
           {/* Events list */}
           <div className="space-y-3">
             {events.length === 0 && (
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center text-sm text-white/40">
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-400 shadow-sm">
                 No events yet. Create your first one above!
               </div>
             )}
             {events.map((event) => (
-              <div key={event.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div key={event.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <div className="font-medium text-white truncate">{event.title}</div>
-                    <div className="text-xs text-white/60">
+                    <div className="truncate font-medium text-slate-900">{event.title}</div>
+                    <div className="text-xs text-slate-500">
                       {format(parseISO(event.start_at), 'EEE, MMM d · h:mm a')}
                     </div>
                     {event.location_name && (
-                      <div className="text-xs text-white/40">📍 {event.location_name}</div>
+                      <div className="text-xs text-slate-400">📍 {event.location_name}</div>
                     )}
                     <span
                       className={[
                         'mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium',
                         event.status === 'published'
-                          ? 'bg-green-500/20 text-green-300'
-                          : 'bg-yellow-500/20 text-yellow-300',
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-amber-100 text-amber-700',
                       ].join(' ')}
                     >
                       {event.status}
                     </span>
                   </div>
-                  <div className="flex flex-col gap-1.5 shrink-0">
+                  <div className="flex shrink-0 flex-col gap-1.5">
                     <button
                       onClick={() => setRosterEvent(event)}
-                      className="rounded-xl bg-white/10 px-3 py-1.5 text-xs text-white hover:bg-white/20"
+                      className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
                     >
                       Check-ins
                     </button>
                     <button
                       onClick={() => openEdit(event)}
-                      className="rounded-xl bg-white/10 px-3 py-1.5 text-xs text-white hover:bg-white/20"
+                      className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => handleDelete(event.id)}
-                      className="rounded-xl bg-red-500/10 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20"
+                      className="rounded-xl border border-red-100 bg-red-50 px-3 py-1.5 text-xs text-red-600 hover:bg-red-100"
                     >
                       Delete
                     </button>
@@ -349,31 +357,32 @@ export function AdminPage() {
       )}
 
       {tab === 'invite' && (
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-4">
+        <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div>
-            <h2 className="font-medium text-white">Invite an admin</h2>
-            <p className="mt-1 text-sm text-white/60">
-              Generate a one-time invite link. Anyone who signs up with this link will be granted admin access.
+            <h2 className="font-medium text-slate-900">Invite an admin</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Generate a one-time invite link. Anyone who signs up with this link will be granted
+              admin access.
             </p>
           </div>
           <button
             onClick={handleGenerateInvite}
-            className="w-full rounded-xl bg-white py-3 text-sm font-semibold text-[#0b1220]"
+            className="w-full rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
           >
             Generate invite link
           </button>
           {inviteLink && (
             <div className="space-y-2">
-              <p className="text-xs text-white/50">Share this link (one-time use):</p>
+              <p className="text-xs text-slate-500">Share this link (one-time use):</p>
               <div className="flex gap-2">
                 <input
                   readOnly
                   value={inviteLink}
-                  className="flex-1 min-w-0 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/80 outline-none"
+                  className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 outline-none"
                 />
                 <button
                   onClick={() => navigator.clipboard.writeText(inviteLink)}
-                  className="shrink-0 rounded-xl bg-white/10 px-3 py-2 text-xs text-white hover:bg-white/20"
+                  className="shrink-0 rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
                 >
                   Copy
                 </button>
