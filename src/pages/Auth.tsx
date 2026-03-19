@@ -49,15 +49,16 @@ export function AuthPage() {
 
   return (
     <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-slate-900">
-      {/* Clean Charlotte skyline background */}
+      {/* Charlotte skyline — blurred and zoomed to soften baked-in text */}
       <img
-        src="/charlotte-skyline-clean.jpg"
+        src="/charlotte-skyline.png"
         alt=""
         aria-hidden
-        className="absolute inset-0 h-full w-full object-cover object-center"
+        className="absolute inset-0 h-full w-full object-cover object-right"
+        style={{ filter: 'blur(8px)', transform: 'scale(1.08)' }}
       />
       {/* Dark overlay for contrast */}
-      <div className="absolute inset-0 bg-black/35" />
+      <div className="absolute inset-0 bg-black/40" />
 
       {/* Card */}
       <div className="relative z-10 w-full max-w-sm mx-4 rounded-2xl bg-white px-8 py-10 shadow-2xl">
