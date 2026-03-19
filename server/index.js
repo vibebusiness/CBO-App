@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import multer from 'multer';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -356,11 +357,12 @@ app.get('/api/admin/invite/verify', async (req, res) => {
   }
 });
 
-// In production, serve the built frontend and handle SPA routing
-if (process.env.NODE_ENV === 'production') {
-  const distPath = path.join(__dirname, '../dist');
+// Serve the built frontend if dist/ exists (production deployment)
+const distPath = path.join(__dirname, '../dist');
+if (fs.existsSync(path.join(distPath, 'index.html'))) {
   app.use(express.static(distPath));
-  app.get('*', (_req, res) => {
+  // SPA fallback — must use app.use so path-to-regexp wildcard issues are avoided
+  app.use((_req, res) => {
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
