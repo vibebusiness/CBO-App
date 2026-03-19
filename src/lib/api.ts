@@ -1,6 +1,6 @@
 const BASE = '/api';
 
-function getToken(): string | null {
+export function getToken(): string | null {
   return localStorage.getItem('cbo_token');
 }
 
@@ -12,7 +12,7 @@ export function clearToken() {
   localStorage.removeItem('cbo_token');
 }
 
-function headers(): Record<string, string> {
+function authHeaders(): Record<string, string> {
   const token = getToken();
   return {
     'Content-Type': 'application/json',
@@ -21,7 +21,7 @@ function headers(): Record<string, string> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { ...init, headers: headers() });
+  const res = await fetch(`${BASE}${path}`, { ...init, headers: authHeaders() });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? 'Request failed');
   return data as T;
@@ -33,15 +33,26 @@ export type AppUser = {
   role: 'admin' | 'member';
   full_name: string | null;
   business_name: string | null;
+  industry: string | null;
+  phone: string | null;
   created_at: string;
 };
 
-export async function signUp(email: string, password: string): Promise<{ token: string; user: AppUser }> {
-  return request('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password }) });
+import type { Event, CheckIn } from '../types/models';
+
+// Auth
+export async function signUp(email: string, password: string, inviteToken?: string) {
+  return request<{ token: string; user: AppUser }>('/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify({ email, password, inviteToken }),
+  });
 }
 
-export async function signIn(email: string, password: string): Promise<{ token: string; user: AppUser }> {
-  return request('/auth/signin', { method: 'POST', body: JSON.stringify({ email, password }) });
+export async function signIn(email: string, password: string) {
+  return request<{ token: string; user: AppUser }>('/auth/signin', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
 }
 
 export async function getMe(): Promise<AppUser | null> {
@@ -54,22 +65,55 @@ export async function getMe(): Promise<AppUser | null> {
   }
 }
 
-export async function updateProfile(data: { full_name: string; business_name: string }): Promise<AppUser> {
+// Profile
+export async function updateProfile(data: {
+  full_name: string;
+  business_name?: string;
+  industry?: string;
+  phone?: string;
+}): Promise<AppUser> {
   return request('/profile', { method: 'PATCH', body: JSON.stringify(data) });
 }
 
-export async function getEvents() {
-  return request<import('../types/models').Event[]>('/events');
+// Events
+export async function getEvents(all = false): Promise<Event[]> {
+  return request(`/events${all ? '?all=true' : ''}`);
 }
 
-export async function createEvent(data: Omit<import('../types/models').Event, 'id' | 'created_at' | 'created_by'>) {
-  return request<import('../types/models').Event>('/events', { method: 'POST', body: JSON.stringify(data) });
+export async function getEvent(id: string): Promise<Event> {
+  return request(`/events/${id}`);
 }
 
-export async function checkIn(eventId: string) {
-  return request(`/checkins/${eventId}`, { method: 'POST' });
+export async function createEvent(data: Partial<Event>): Promise<Event> {
+  return request('/events', { method: 'POST', body: JSON.stringify(data) });
 }
 
-export async function getCheckIns(eventId: string) {
-  return request(`/checkins/${eventId}`);
+export async function updateEvent(id: string, data: Partial<Event>): Promise<Event> {
+  return request(`/events/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export async function deleteEvent(id: string): Promise<void> {
+  return request(`/events/${id}`, { method: 'DELETE' });
+}
+
+// Check-ins
+export async function getCheckIns(eventId: string): Promise<CheckIn[]> {
+  return request(`/events/${eventId}/checkins`);
+}
+
+export async function checkIn(eventId: string): Promise<CheckIn | { already_checked_in: boolean }> {
+  return request(`/events/${eventId}/checkins`, { method: 'POST' });
+}
+
+export async function removeCheckIn(eventId: string, userId: string): Promise<void> {
+  return request(`/events/${eventId}/checkins/${userId}`, { method: 'DELETE' });
+}
+
+// Admin invite
+export async function createInviteLink(): Promise<{ token: string; link: string }> {
+  return request('/admin/invite', { method: 'POST' });
+}
+
+export async function verifyInviteToken(token: string): Promise<{ valid: boolean }> {
+  return request(`/admin/invite/verify?token=${token}`);
 }

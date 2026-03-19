@@ -1,17 +1,18 @@
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '../state/auth';
 
-function NavLink({ href, label }: { href: string; label: string }) {
+function NavLink({ href, label, icon }: { href: string; label: string; icon: string }) {
   const [loc] = useLocation();
-  const active = loc === href;
+  const active = loc === href || (href !== '/calendar' && loc.startsWith(href));
   return (
     <Link href={href}>
       <a
-        className={
-          'block rounded-xl px-3 py-2 text-sm font-medium ' +
-          (active ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5')
-        }
+        className={[
+          'flex flex-col items-center gap-0.5 px-3 py-2 text-xs font-medium transition',
+          active ? 'text-white' : 'text-white/50 hover:text-white/80',
+        ].join(' ')}
       >
+        <span className="text-lg leading-none">{icon}</span>
         {label}
       </a>
     </Link>
@@ -22,35 +23,44 @@ export function AuthedLayout({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth();
 
   return (
-    <div className="min-h-full">
-      <div className="mx-auto max-w-md px-4 pb-24 pt-4">
-        <header className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src="/cbo-logo.png" alt="CBO" className="h-8 w-auto" />
-            <div>
-              <div className="text-sm font-semibold">CBO Events</div>
-              <div className="text-xs text-white/60">Check-in app</div>
-            </div>
+    <div className="min-h-screen bg-[#0b1220]">
+      {/* Top header */}
+      <header className="sticky top-0 z-10 border-b border-white/5 bg-[#0b1220]/95 backdrop-blur">
+        <div className="mx-auto flex max-w-md items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-2">
+            <img src="/cbo-logo.png" alt="CBO" className="h-7 w-auto" />
+            <span className="text-sm font-semibold text-white">CBO</span>
           </div>
-          {user ? (
-            <button
-              className="rounded-xl bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/20"
-              onClick={signOut}
-            >
-              Sign out
-            </button>
-          ) : null}
-        </header>
+          {user && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-white/40 hidden sm:inline">
+                {user.full_name ?? user.email}
+              </span>
+              <button
+                className="rounded-xl bg-white/10 px-3 py-1.5 text-xs text-white hover:bg-white/20"
+                onClick={signOut}
+              >
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
 
-        <main>{children}</main>
-      </div>
+      {/* Main content */}
+      <main className="mx-auto max-w-md px-4 pb-28 pt-4">
+        {children}
+      </main>
 
+      {/* Bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 border-t border-white/10 bg-[#0b1220]/95 backdrop-blur">
-        <div className="mx-auto flex max-w-md items-center justify-around px-2 py-2">
-          <NavLink href="/calendar" label="Calendar" />
-          <NavLink href="/events" label="Events" />
-          <NavLink href="/profile" label="Profile" />
-          {user?.role === 'admin' ? <NavLink href="/admin" label="Admin" /> : null}
+        <div className="mx-auto flex max-w-md items-center justify-around px-2 py-1">
+          <NavLink href="/calendar" label="Calendar" icon="📅" />
+          <NavLink href="/events" label="Events" icon="🎟️" />
+          <NavLink href="/profile" label="Profile" icon="👤" />
+          {user?.role === 'admin' && (
+            <NavLink href="/admin" label="Admin" icon="⚙️" />
+          )}
         </div>
       </nav>
     </div>

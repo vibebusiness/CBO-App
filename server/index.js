@@ -2,6 +2,7 @@ import express from 'express';
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 
 const { Pool } = pg;
 const app = express();
@@ -25,18 +26,49 @@ function authMiddleware(req, res, next) {
   }
 }
 
+function adminOnly(req, res, next) {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  next();
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────
+
 app.post('/api/auth/signup', async (req, res) => {
-  const { email, password } = req.body || {};
+  const { email, password, inviteToken } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
   try {
     const hash = await bcrypt.hash(password, 10);
+
+    // Determine role: first user = admin, valid invite token = admin, else member
+    let role = 'member';
+    let tokenRow = null;
     const count = await pool.query('SELECT COUNT(*) FROM users');
-    const role = parseInt(count.rows[0].count) === 0 ? 'admin' : 'member';
+    if (parseInt(count.rows[0].count) === 0) {
+      role = 'admin';
+    } else if (inviteToken) {
+      const tkRes = await pool.query(
+        'SELECT * FROM invite_tokens WHERE token = $1 AND used_by IS NULL',
+        [inviteToken]
+      );
+      if (tkRes.rows[0]) {
+        role = 'admin';
+        tokenRow = tkRes.rows[0];
+      }
+    }
+
     const result = await pool.query(
-      'INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id, email, role, full_name, business_name, created_at',
+      'INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id, email, role, full_name, business_name, industry, phone, created_at',
       [email.toLowerCase().trim(), hash, role]
     );
     const user = result.rows[0];
+
+    if (tokenRow) {
+      await pool.query(
+        'UPDATE invite_tokens SET used_by = $1, used_at = NOW() WHERE id = $2',
+        [user.id, tokenRow.id]
+      );
+    }
+
     res.json({ token: makeToken(user), user });
   } catch (e) {
     if (e.code === '23505') return res.status(400).json({ error: 'An account with that email already exists' });
@@ -50,7 +82,7 @@ app.post('/api/auth/signin', async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
   try {
     const result = await pool.query(
-      'SELECT id, email, role, full_name, business_name, created_at, password_hash FROM users WHERE email = $1',
+      'SELECT id, email, role, full_name, business_name, industry, phone, created_at, password_hash FROM users WHERE email = $1',
       [email.toLowerCase().trim()]
     );
     const user = result.rows[0];
@@ -68,7 +100,7 @@ app.post('/api/auth/signin', async (req, res) => {
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, email, role, full_name, business_name, created_at FROM users WHERE id = $1',
+      'SELECT id, email, role, full_name, business_name, industry, phone, created_at FROM users WHERE id = $1',
       [req.user.id]
     );
     if (!result.rows[0]) return res.status(404).json({ error: 'User not found' });
@@ -79,12 +111,17 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
   }
 });
 
+// ── Profile ───────────────────────────────────────────────────────────────
+
 app.patch('/api/profile', authMiddleware, async (req, res) => {
-  const { full_name, business_name } = req.body || {};
+  const { full_name, business_name, industry, phone } = req.body || {};
+  if (!full_name?.trim()) return res.status(400).json({ error: 'Name is required' });
   try {
     const result = await pool.query(
-      'UPDATE users SET full_name = $1, business_name = $2 WHERE id = $3 RETURNING id, email, role, full_name, business_name, created_at',
-      [full_name ?? null, business_name ?? null, req.user.id]
+      `UPDATE users SET full_name = $1, business_name = $2, industry = $3, phone = $4
+       WHERE id = $5
+       RETURNING id, email, role, full_name, business_name, industry, phone, created_at`,
+      [full_name.trim(), business_name ?? null, industry ?? null, phone ?? null, req.user.id]
     );
     res.json(result.rows[0]);
   } catch (e) {
@@ -92,12 +129,17 @@ app.patch('/api/profile', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+// ── Events ────────────────────────────────────────────────────────────────
 
 app.get('/api/events', authMiddleware, async (req, res) => {
   try {
-    const result = await pool.query(
-      "SELECT * FROM events WHERE status = 'published' ORDER BY start_at ASC"
-    );
+    const { all } = req.query;
+    // Admins can see all; members see published only
+    const query = req.user.role === 'admin' && all === 'true'
+      ? 'SELECT * FROM events ORDER BY start_at ASC'
+      : "SELECT * FROM events WHERE status = 'published' ORDER BY start_at ASC";
+    const result = await pool.query(query);
     res.json(result.rows);
   } catch (e) {
     console.error(e);
@@ -105,14 +147,25 @@ app.get('/api/events', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/api/events', authMiddleware, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
-  const { title, description, start_at, location, status } = req.body || {};
-  if (!title || !start_at) return res.status(400).json({ error: 'Title and start_at required' });
+app.get('/api/events/:id', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM events WHERE id = $1', [req.params.id]);
+    if (!result.rows[0]) return res.status(404).json({ error: 'Event not found' });
+    res.json(result.rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/events', authMiddleware, adminOnly, async (req, res) => {
+  const { title, description, start_at, end_at, location_name, location_address, status } = req.body || {};
+  if (!title || !start_at) return res.status(400).json({ error: 'Title and start time required' });
   try {
     const result = await pool.query(
-      'INSERT INTO events (title, description, start_at, location, status, created_by) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-      [title, description ?? '', start_at, location ?? '', status ?? 'draft', req.user.id]
+      `INSERT INTO events (title, description, start_at, end_at, location_name, location_address, status, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [title, description ?? '', start_at, end_at ?? null, location_name ?? '', location_address ?? '', status ?? 'draft', req.user.id]
     );
     res.json(result.rows[0]);
   } catch (e) {
@@ -121,30 +174,120 @@ app.post('/api/events', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/api/checkins/:eventId', authMiddleware, async (req, res) => {
+app.patch('/api/events/:id', authMiddleware, adminOnly, async (req, res) => {
+  const { title, description, start_at, end_at, location_name, location_address, status } = req.body || {};
   try {
     const result = await pool.query(
-      'INSERT INTO checkins (event_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING *',
-      [req.params.eventId, req.user.id]
+      `UPDATE events SET title = $1, description = $2, start_at = $3, end_at = $4,
+       location_name = $5, location_address = $6, status = $7
+       WHERE id = $8 RETURNING *`,
+      [title, description, start_at, end_at ?? null, location_name, location_address, status, req.params.id]
     );
-    res.json(result.rows[0] ?? { already: true });
+    if (!result.rows[0]) return res.status(404).json({ error: 'Event not found' });
+    res.json(result.rows[0]);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-app.get('/api/checkins/:eventId', authMiddleware, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+app.delete('/api/events/:id', authMiddleware, adminOnly, async (req, res) => {
   try {
-    const result = await pool.query(
-      'SELECT c.*, u.email, u.full_name FROM checkins c JOIN users u ON c.user_id = u.id WHERE c.event_id = $1 ORDER BY c.checked_in_at DESC',
-      [req.params.eventId]
-    );
+    await pool.query('DELETE FROM checkins WHERE event_id = $1', [req.params.id]);
+    await pool.query('DELETE FROM events WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── Check-ins ─────────────────────────────────────────────────────────────
+
+app.get('/api/events/:id/checkins', authMiddleware, async (req, res) => {
+  try {
+    // Members can see their own; admins see all
+    const query = req.user.role === 'admin'
+      ? `SELECT c.*, u.email, u.full_name FROM checkins c
+         JOIN users u ON c.user_id = u.id WHERE c.event_id = $1 ORDER BY c.checked_in_at DESC`
+      : `SELECT * FROM checkins WHERE event_id = $1 AND user_id = $2`;
+    const params = req.user.role === 'admin' ? [req.params.id] : [req.params.id, req.user.id];
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/events/:id/checkins', authMiddleware, async (req, res) => {
+  try {
+    const eventRes = await pool.query('SELECT * FROM events WHERE id = $1', [req.params.id]);
+    const event = eventRes.rows[0];
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+
+    // Check window: 2 hours before → 6 hours after start
+    const now = new Date();
+    const start = new Date(event.start_at);
+    const windowOpen = new Date(start.getTime() - 2 * 60 * 60 * 1000);
+    const windowClose = new Date(start.getTime() + 6 * 60 * 60 * 1000);
+
+    if (now < windowOpen) {
+      const minutesUntil = Math.ceil((windowOpen - now) / 60000);
+      return res.status(400).json({ error: `Check-in opens ${minutesUntil} minutes before the event starts` });
+    }
+    if (now > windowClose) {
+      return res.status(400).json({ error: 'Check-in is closed for this event' });
+    }
+
+    const result = await pool.query(
+      'INSERT INTO checkins (event_id, user_id) VALUES ($1, $2) ON CONFLICT (event_id, user_id) DO NOTHING RETURNING *',
+      [req.params.id, req.user.id]
+    );
+    res.json(result.rows[0] ?? { already_checked_in: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/events/:eventId/checkins/:userId', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM checkins WHERE event_id = $1 AND user_id = $2', [req.params.eventId, req.params.userId]);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── Admin Invite Tokens ───────────────────────────────────────────────────
+
+app.post('/api/admin/invite', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const token = crypto.randomBytes(16).toString('hex');
+    await pool.query(
+      'INSERT INTO invite_tokens (token, created_by) VALUES ($1, $2)',
+      [token, req.user.id]
+    );
+    res.json({ token, link: `/signup?invite=${token}` });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/api/admin/invite/verify', async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).json({ valid: false });
+  try {
+    const result = await pool.query(
+      'SELECT * FROM invite_tokens WHERE token = $1 AND used_by IS NULL',
+      [token]
+    );
+    res.json({ valid: !!result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ valid: false });
   }
 });
 
