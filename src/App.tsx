@@ -6,7 +6,6 @@ import { EventsPage } from './pages/Events';
 import { ProfilePage } from './pages/Profile';
 import { AdminPage } from './pages/Admin';
 import { useAuth } from './state/auth';
-import { LandingPage } from './pages/Landing';
 
 function AuthedRoutes() {
   return (
@@ -27,23 +26,21 @@ function AuthedRoutes() {
 export default function App() {
   const { user, loading } = useAuth();
 
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-900">
+        <div className="text-sm text-white/60">Loading…</div>
+      </div>
+    );
+  }
+
   return (
     <Switch>
-      <Route path="/" component={LandingPage} />
+      <Route path="/" component={AuthPage} />
       <Route path="/auth" component={AuthPage} />
 
       <Route>
-        {loading ? (
-          <div className="mx-auto max-w-md px-4 py-6">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
-              Loading…
-            </div>
-          </div>
-        ) : user ? (
-          <AuthedRoutes />
-        ) : (
-          <Redirect to="/auth" />
-        )}
+        {user ? <AuthedRoutes /> : <Redirect to="/" />}
       </Route>
     </Switch>
   );
