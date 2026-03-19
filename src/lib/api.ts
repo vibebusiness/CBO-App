@@ -75,6 +75,21 @@ export async function updateProfile(data: {
   return request('/profile', { method: 'PATCH', body: JSON.stringify(data) });
 }
 
+// Image upload
+export async function uploadImage(file: File): Promise<string> {
+  const token = getToken();
+  const form = new FormData();
+  form.append('image', file);
+  const res = await fetch('/api/upload', {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'Upload failed');
+  return data.url as string;
+}
+
 // Events
 export async function getEvents(all = false): Promise<Event[]> {
   return request(`/events${all ? '?all=true' : ''}`);

@@ -1,118 +1,73 @@
 import React from 'react';
-import { format, parseISO, isAfter, subHours, addHours } from 'date-fns';
-import { getEvents, getCheckIns, checkIn, type AppUser } from '../lib/api';
-import type { Event, CheckIn } from '../types/models';
-import { useAuth } from '../state/auth';
+import { format, parseISO, isAfter, addHours } from 'date-fns';
+import { Link } from 'wouter';
+import { getEvents } from '../lib/api';
+import type { Event } from '../types/models';
 
-function isCheckInOpen(event: Event): boolean {
-  const now = new Date();
-  const start = parseISO(event.start_at);
-  return now >= subHours(start, 2) && now <= addHours(start, 6);
-}
-
-function EventCard({ event, user }: { event: Event; user: AppUser | null }) {
-  const [checkins, setCheckins] = React.useState<CheckIn[]>([]);
-  const [myCheckin, setMyCheckin] = React.useState<CheckIn | null>(null);
-  const [loading, setLoading] = React.useState(false);
-  const [msg, setMsg] = React.useState<string | null>(null);
-  const open = isCheckInOpen(event);
-
-  React.useEffect(() => {
-    getCheckIns(event.id).then((rows) => {
-      if (Array.isArray(rows)) {
-        setCheckins(rows);
-        const mine = rows.find((c) => c.user_id === user?.id);
-        setMyCheckin(mine ?? null);
-      }
-    });
-  }, [event.id, user?.id]);
-
-  const handleCheckIn = async () => {
-    setLoading(true);
-    setMsg(null);
-    try {
-      const res = await checkIn(event.id);
-      if ('already_checked_in' in res) {
-        setMsg('You are already checked in!');
-      } else {
-        setMyCheckin(res as CheckIn);
-        setMsg(null);
-      }
-    } catch (e: unknown) {
-      setMsg((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+function EventCard({ event }: { event: Event }) {
   const start = parseISO(event.start_at);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      {/* Date badge + title */}
-      <div className="flex items-start gap-3">
-        <div className="flex min-w-[48px] flex-col items-center rounded-xl bg-slate-100 px-2 py-2 text-center">
-          <span className="text-xs font-medium uppercase text-slate-500">{format(start, 'MMM')}</span>
-          <span className="text-xl font-bold leading-none text-slate-900">{format(start, 'd')}</span>
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="font-semibold leading-tight text-slate-900">{event.title}</div>
-          <div className="mt-0.5 text-xs text-slate-500">{format(start, 'EEEE · h:mm a')}</div>
-          {event.location_name && (
-            <div className="mt-0.5 text-xs text-slate-400">📍 {event.location_name}</div>
-          )}
-          {event.status === 'draft' && (
-            <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-              Draft
-            </span>
-          )}
-        </div>
-      </div>
+    <Link href={`/events/${event.id}`}>
+      <a className="block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md active:scale-[0.99]">
+        {/* Event image */}
+        {event.image_url ? (
+          <div className="h-44 w-full overflow-hidden bg-slate-100">
+            <img
+              src={event.image_url}
+              alt={event.title}
+              className="h-full w-full object-cover"
+            />
+          </div>
+        ) : (
+          <div className="flex h-28 w-full items-center justify-center bg-slate-100">
+            <span className="text-3xl opacity-30">🎟️</span>
+          </div>
+        )}
 
-      {event.description && (
-        <p className="mt-3 text-sm leading-relaxed text-slate-600">{event.description}</p>
-      )}
-      {event.location_address && (
-        <p className="mt-1 text-xs text-slate-400">{event.location_address}</p>
-      )}
+        {/* Content */}
+        <div className="p-4">
+          <div className="flex items-start gap-3">
+            {/* Date badge */}
+            <div className="flex min-w-[44px] flex-col items-center rounded-xl bg-slate-100 px-2 py-1.5 text-center">
+              <span className="text-[10px] font-semibold uppercase leading-none text-slate-500">
+                {format(start, 'MMM')}
+              </span>
+              <span className="text-xl font-bold leading-tight text-slate-900">
+                {format(start, 'd')}
+              </span>
+            </div>
 
-      {/* Check-in area */}
-      <div className="mt-4">
-        {myCheckin ? (
-          <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
-            <span className="text-base text-green-600">✓</span>
-            <div>
-              <div className="text-sm font-medium text-green-700">Checked in</div>
-              <div className="text-xs text-green-600/70">
-                {format(parseISO(myCheckin.checked_in_at), 'h:mm a')}
-              </div>
+            <div className="min-w-0 flex-1">
+              <div className="font-semibold leading-snug text-slate-900">{event.title}</div>
+              <div className="mt-0.5 text-xs text-slate-500">{format(start, 'EEEE · h:mm a')}</div>
+              {event.location_name && (
+                <div className="mt-0.5 text-xs text-slate-400">📍 {event.location_name}</div>
+              )}
             </div>
           </div>
-        ) : open ? (
-          <button
-            onClick={handleCheckIn}
-            disabled={loading}
-            className="w-full rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 active:scale-95 disabled:opacity-50"
-          >
-            {loading ? 'Checking in…' : 'Check in'}
-          </button>
-        ) : (
-          <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-center text-xs text-slate-400">
-            {isAfter(new Date(), addHours(parseISO(event.start_at), 6))
-              ? 'Check-in is closed'
-              : 'Check-in opens 2 hours before the event'}
+
+          {/* Description snippet */}
+          {event.description && (
+            <p className="mt-3 line-clamp-2 text-sm text-slate-500">{event.description}</p>
+          )}
+
+          {/* CTA */}
+          <div className="mt-3 flex items-center justify-between">
+            {event.status === 'draft' && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                Draft
+              </span>
+            )}
+            <span className="ml-auto text-xs font-medium text-slate-400">View details →</span>
           </div>
-        )}
-        {msg && !myCheckin && (
-          <p className="mt-2 text-center text-xs text-slate-500">{msg}</p>
-        )}
-      </div>
-    </div>
+        </div>
+      </a>
+    </Link>
   );
 }
 
 export function EventsPage() {
-  const { user } = useAuth();
   const [events, setEvents] = React.useState<Event[]>([]);
   const [loading, setLoading] = React.useState(true);
 
@@ -123,12 +78,8 @@ export function EventsPage() {
     });
   }, []);
 
-  const upcoming = events.filter((e) =>
-    isAfter(addHours(parseISO(e.start_at), 6), new Date())
-  );
-  const past = events.filter(
-    (e) => !isAfter(addHours(parseISO(e.start_at), 6), new Date())
-  );
+  const upcoming = events.filter((e) => isAfter(addHours(parseISO(e.start_at), 6), new Date()));
+  const past = events.filter((e) => !isAfter(addHours(parseISO(e.start_at), 6), new Date()));
 
   if (loading) {
     return (
@@ -149,7 +100,7 @@ export function EventsPage() {
       ) : (
         <div className="space-y-3">
           {upcoming.map((e) => (
-            <EventCard key={e.id} event={e} user={user} />
+            <EventCard key={e.id} event={e} />
           ))}
         </div>
       )}
@@ -159,7 +110,7 @@ export function EventsPage() {
           <h2 className="pt-2 text-sm font-medium text-slate-400">Past events</h2>
           <div className="space-y-3">
             {past.map((e) => (
-              <EventCard key={e.id} event={e} user={user} />
+              <EventCard key={e.id} event={e} />
             ))}
           </div>
         </>

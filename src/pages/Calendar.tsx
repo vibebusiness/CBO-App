@@ -4,6 +4,7 @@ import {
   isSameMonth, isSameDay, isToday, addMonths, subMonths, getDay,
   isAfter, addHours,
 } from 'date-fns';
+import { Link } from 'wouter';
 import { getEvents, getCheckIns } from '../lib/api';
 import type { Event } from '../types/models';
 import { useAuth } from '../state/auth';
@@ -31,15 +32,9 @@ export function CalendarPage() {
     });
   }, [events, user?.id]);
 
-  const days = eachDayOfInterval({
-    start: startOfMonth(month),
-    end: endOfMonth(month),
-  });
-
+  const days = eachDayOfInterval({ start: startOfMonth(month), end: endOfMonth(month) });
   const startPad = getDay(startOfMonth(month));
-  const eventsOnDay = (day: Date) =>
-    events.filter((e) => isSameDay(parseISO(e.start_at), day));
-
+  const eventsOnDay = (day: Date) => events.filter((e) => isSameDay(parseISO(e.start_at), day));
   const selectedEvents = selected ? eventsOnDay(selected) : [];
 
   return (
@@ -64,17 +59,13 @@ export function CalendarPage() {
       {/* Day-of-week headers */}
       <div className="grid grid-cols-7 text-center">
         {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
-          <div key={d} className="py-1 text-xs font-medium text-slate-400">
-            {d}
-          </div>
+          <div key={d} className="py-1 text-xs font-medium text-slate-400">{d}</div>
         ))}
       </div>
 
       {/* Calendar grid */}
       <div className="grid grid-cols-7 gap-px rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-        {Array.from({ length: startPad }).map((_, i) => (
-          <div key={`pad-${i}`} />
-        ))}
+        {Array.from({ length: startPad }).map((_, i) => <div key={`pad-${i}`} />)}
         {days.map((day) => {
           const dayEvents = eventsOnDay(day);
           const isSelected = selected && isSameDay(day, selected);
@@ -95,12 +86,7 @@ export function CalendarPage() {
             >
               <span>{format(day, 'd')}</span>
               {dayEvents.length > 0 && (
-                <span
-                  className={[
-                    'mt-0.5 h-1.5 w-1.5 rounded-full',
-                    isSelected ? 'bg-white' : 'bg-orange-400',
-                  ].join(' ')}
-                />
+                <span className={['mt-0.5 h-1.5 w-1.5 rounded-full', isSelected ? 'bg-white' : 'bg-orange-400'].join(' ')} />
               )}
             </button>
           );
@@ -119,69 +105,85 @@ export function CalendarPage() {
             </div>
           ) : (
             selectedEvents.map((event) => (
-              <div key={event.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-medium text-slate-900">{event.title}</div>
-                    <div className="mt-0.5 text-xs text-slate-500">
-                      {format(parseISO(event.start_at), 'h:mm a')}
-                      {event.end_at && ` – ${format(parseISO(event.end_at), 'h:mm a')}`}
+              <Link key={event.id} href={`/events/${event.id}`}>
+                <a className="block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md">
+                  {event.image_url && (
+                    <div className="h-32 w-full overflow-hidden bg-slate-100">
+                      <img src={event.image_url} alt={event.title} className="h-full w-full object-cover" />
                     </div>
-                    {event.location_name && (
-                      <div className="mt-0.5 text-xs text-slate-400">📍 {event.location_name}</div>
+                  )}
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-medium text-slate-900">{event.title}</div>
+                        <div className="mt-0.5 text-xs text-slate-500">
+                          {format(parseISO(event.start_at), 'h:mm a')}
+                          {event.end_at && ` – ${format(parseISO(event.end_at), 'h:mm a')}`}
+                        </div>
+                        {event.location_name && (
+                          <div className="mt-0.5 text-xs text-slate-400">📍 {event.location_name}</div>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        {checkedInIds.has(event.id) && (
+                          <span className="rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs text-green-700">
+                            ✓ Checked in
+                          </span>
+                        )}
+                        <span className="text-xs text-slate-400">View →</span>
+                      </div>
+                    </div>
+                    {event.description && (
+                      <p className="mt-2 line-clamp-2 text-sm text-slate-500">{event.description}</p>
                     )}
                   </div>
-                  {checkedInIds.has(event.id) && (
-                    <span className="shrink-0 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs text-green-700">
-                      ✓ Checked in
-                    </span>
-                  )}
-                </div>
-                {event.description && (
-                  <p className="mt-2 text-sm text-slate-600">{event.description}</p>
-                )}
-              </div>
+                </a>
+              </Link>
             ))
           )}
         </div>
       )}
 
-      {/* Upcoming list */}
+      {/* Coming up list */}
       <div>
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          Coming up
-        </h2>
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Coming up</h2>
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
           {events
             .filter((e) => isAfter(addHours(parseISO(e.start_at), 6), new Date()))
             .slice(0, 5)
             .map((event, idx, arr) => (
-              <div
-                key={event.id}
-                className={[
-                  'flex items-center gap-3 px-4 py-3',
+              <Link key={event.id} href={`/events/${event.id}`}>
+                <a className={[
+                  'flex items-center gap-3 px-4 py-3 transition hover:bg-slate-50',
                   idx < arr.length - 1 ? 'border-b border-slate-100' : '',
-                ].join(' ')}
-              >
-                <div className="w-10 shrink-0 text-center">
-                  <div className="text-xs font-medium uppercase text-slate-400">
-                    {format(parseISO(event.start_at), 'MMM')}
+                ].join(' ')}>
+                  {/* Thumbnail */}
+                  {event.image_url ? (
+                    <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+                      <img src={event.image_url} alt="" className="h-full w-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-base">
+                      🎟️
+                    </div>
+                  )}
+
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-slate-900">{event.title}</div>
+                    <div className="text-xs text-slate-400">
+                      {format(parseISO(event.start_at), 'MMM d · h:mm a')}
+                      {event.location_name ? ` · ${event.location_name}` : ''}
+                    </div>
                   </div>
-                  <div className="text-lg font-bold leading-none text-slate-900">
-                    {format(parseISO(event.start_at), 'd')}
+
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {checkedInIds.has(event.id) && (
+                      <span className="text-xs text-green-600">✓</span>
+                    )}
+                    <span className="text-xs text-slate-300">›</span>
                   </div>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-slate-900">{event.title}</div>
-                  <div className="text-xs text-slate-400">
-                    {format(parseISO(event.start_at), 'h:mm a')}
-                    {event.location_name ? ` · ${event.location_name}` : ''}
-                  </div>
-                </div>
-                {checkedInIds.has(event.id) && (
-                  <span className="shrink-0 text-xs text-green-600">✓</span>
-                )}
-              </div>
+                </a>
+              </Link>
             ))}
           {events.filter((e) => isAfter(addHours(parseISO(e.start_at), 6), new Date())).length === 0 && (
             <div className="px-4 py-4 text-sm text-slate-400">No upcoming events</div>

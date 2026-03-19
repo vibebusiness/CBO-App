@@ -2,7 +2,7 @@ import React from 'react';
 import { format, parseISO } from 'date-fns';
 import {
   getEvents, createEvent, updateEvent, deleteEvent,
-  getCheckIns, removeCheckIn, createInviteLink,
+  getCheckIns, removeCheckIn, createInviteLink, uploadImage,
 } from '../lib/api';
 import type { Event, CheckIn } from '../types/models';
 
@@ -14,6 +14,7 @@ type EventForm = {
   location_name: string;
   location_address: string;
   status: 'draft' | 'published';
+  image_url: string;
 };
 
 const EMPTY_FORM: EventForm = {
@@ -24,6 +25,7 @@ const EMPTY_FORM: EventForm = {
   location_name: '',
   location_address: '',
   status: 'draft',
+  image_url: '',
 };
 
 function Input({ label, ...props }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
@@ -33,6 +35,75 @@ function Input({ label, ...props }: { label: string } & React.InputHTMLAttribute
       <input
         className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
         {...props}
+      />
+    </div>
+  );
+}
+
+function ImageUpload({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (url: string) => void;
+}) {
+  const [uploading, setUploading] = React.useState(false);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const url = await uploadImage(file);
+      onChange(url);
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-slate-600">Event image (optional)</label>
+      {value ? (
+        <div className="relative overflow-hidden rounded-xl border border-slate-200">
+          <img src={value} alt="Event" className="h-36 w-full object-cover" />
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="absolute right-2 top-2 rounded-lg bg-black/50 px-2 py-1 text-xs text-white hover:bg-black/70"
+          >
+            Remove
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 py-6 text-sm text-slate-500 hover:border-slate-400 hover:bg-slate-100 disabled:opacity-50"
+        >
+          {uploading ? (
+            <>
+              <span className="animate-spin">⟳</span>
+              Uploading…
+            </>
+          ) : (
+            <>
+              <span>📷</span>
+              Upload image
+            </>
+          )}
+        </button>
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFile}
       />
     </div>
   );
@@ -62,9 +133,7 @@ function CheckInRoster({ event, onClose }: { event: Event; onClose: () => void }
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h3 className="font-semibold text-slate-900">{event.title}</h3>
-            <p className="text-xs text-slate-500">
-              {format(parseISO(event.start_at), 'MMM d · h:mm a')}
-            </p>
+            <p className="text-xs text-slate-500">{format(parseISO(event.start_at), 'MMM d · h:mm a')}</p>
           </div>
           <button onClick={onClose} className="text-xl text-slate-400 hover:text-slate-700">✕</button>
         </div>
@@ -84,15 +153,9 @@ function CheckInRoster({ event, onClose }: { event: Event; onClose: () => void }
             {checkins.map((c) => (
               <div key={c.id} className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
                 <div>
-                  <div className="text-sm font-medium text-slate-900">
-                    {c.full_name ?? c.email}
-                  </div>
-                  {c.full_name && (
-                    <div className="text-xs text-slate-500">{c.email}</div>
-                  )}
-                  <div className="text-xs text-slate-400">
-                    {format(parseISO(c.checked_in_at), 'h:mm a')}
-                  </div>
+                  <div className="text-sm font-medium text-slate-900">{c.full_name ?? c.email}</div>
+                  {c.full_name && <div className="text-xs text-slate-500">{c.email}</div>}
+                  <div className="text-xs text-slate-400">{format(parseISO(c.checked_in_at), 'h:mm a')}</div>
                 </div>
                 <button
                   onClick={() => handleRemove(c.user_id)}
@@ -122,11 +185,7 @@ export function AdminPage() {
   const load = () => getEvents(true).then(setEvents);
   React.useEffect(() => { load(); }, []);
 
-  const openNew = () => {
-    setForm(EMPTY_FORM);
-    setEditingId(null);
-    setShowForm(true);
-  };
+  const openNew = () => { setForm(EMPTY_FORM); setEditingId(null); setShowForm(true); };
 
   const openEdit = (event: Event) => {
     setForm({
@@ -137,6 +196,7 @@ export function AdminPage() {
       location_name: event.location_name ?? '',
       location_address: event.location_address ?? '',
       status: event.status,
+      image_url: event.image_url ?? '',
     });
     setEditingId(event.id);
     setShowForm(true);
@@ -154,6 +214,7 @@ export function AdminPage() {
         location_name: form.location_name,
         location_address: form.location_address,
         status: form.status,
+        image_url: form.image_url || undefined,
       };
       if (editingId) {
         await updateEvent(editingId, payload);
@@ -179,9 +240,7 @@ export function AdminPage() {
     try {
       const res = await createInviteLink();
       setInviteLink(`${window.location.origin}${res.link}`);
-    } catch (e) {
-      alert((e as Error).message);
-    }
+    } catch (e) { alert((e as Error).message); }
   };
 
   return (
@@ -196,9 +255,7 @@ export function AdminPage() {
             onClick={() => setTab(t)}
             className={[
               'flex-1 rounded-lg py-2 text-sm font-medium capitalize transition',
-              tab === t
-                ? 'bg-slate-900 text-white shadow-sm'
-                : 'text-slate-500 hover:text-slate-700',
+              tab === t ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700',
             ].join(' ')}
           >
             {t === 'events' ? 'Events' : 'Invite Admins'}
@@ -215,12 +272,16 @@ export function AdminPage() {
             + Create event
           </button>
 
-          {/* Event form */}
           {showForm && (
             <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-800">
                 {editingId ? 'Edit event' : 'New event'}
               </h2>
+
+              <ImageUpload
+                value={form.image_url}
+                onChange={(url) => setForm((f) => ({ ...f, image_url: url }))}
+              />
 
               <Input
                 label="Title *"
@@ -273,9 +334,7 @@ export function AdminPage() {
                 <select
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400"
                   value={form.status}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, status: e.target.value as 'draft' | 'published' }))
-                  }
+                  onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as 'draft' | 'published' }))}
                 >
                   <option value="draft">Draft (admins only)</option>
                   <option value="published">Published (visible to members)</option>
@@ -308,46 +367,38 @@ export function AdminPage() {
               </div>
             )}
             {events.map((event) => (
-              <div key={event.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium text-slate-900">{event.title}</div>
-                    <div className="text-xs text-slate-500">
-                      {format(parseISO(event.start_at), 'EEE, MMM d · h:mm a')}
-                    </div>
-                    {event.location_name && (
-                      <div className="text-xs text-slate-400">📍 {event.location_name}</div>
-                    )}
-                    <span
-                      className={[
-                        'mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium',
-                        event.status === 'published'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-amber-100 text-amber-700',
-                      ].join(' ')}
-                    >
-                      {event.status}
-                    </span>
+              <div key={event.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                {event.image_url && (
+                  <div className="h-28 w-full overflow-hidden bg-slate-100">
+                    <img src={event.image_url} alt={event.title} className="h-full w-full object-cover" />
                   </div>
-                  <div className="flex shrink-0 flex-col gap-1.5">
-                    <button
-                      onClick={() => setRosterEvent(event)}
-                      className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-                    >
-                      Check-ins
-                    </button>
-                    <button
-                      onClick={() => openEdit(event)}
-                      className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(event.id)}
-                      className="rounded-xl border border-red-100 bg-red-50 px-3 py-1.5 text-xs text-red-600 hover:bg-red-100"
-                    >
-                      Delete
-                    </button>
+                )}
+                <div className="p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium text-slate-900">{event.title}</div>
+                      <div className="text-xs text-slate-500">{format(parseISO(event.start_at), 'EEE, MMM d · h:mm a')}</div>
+                      {event.location_name && (
+                        <div className="text-xs text-slate-400">📍 {event.location_name}</div>
+                      )}
+                      <span className={[
+                        'mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium',
+                        event.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700',
+                      ].join(' ')}>
+                        {event.status}
+                      </span>
+                    </div>
+                    <div className="flex shrink-0 flex-col gap-1.5">
+                      <button onClick={() => setRosterEvent(event)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">
+                        Check-ins
+                      </button>
+                      <button onClick={() => openEdit(event)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">
+                        Edit
+                      </button>
+                      <button onClick={() => handleDelete(event.id)} className="rounded-xl border border-red-100 bg-red-50 px-3 py-1.5 text-xs text-red-600 hover:bg-red-100">
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -361,8 +412,7 @@ export function AdminPage() {
           <div>
             <h2 className="font-medium text-slate-900">Invite an admin</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Generate a one-time invite link. Anyone who signs up with this link will be granted
-              admin access.
+              Generate a one-time invite link. Anyone who signs up with this link will be granted admin access.
             </p>
           </div>
           <button
@@ -392,9 +442,7 @@ export function AdminPage() {
         </div>
       )}
 
-      {rosterEvent && (
-        <CheckInRoster event={rosterEvent} onClose={() => setRosterEvent(null)} />
-      )}
+      {rosterEvent && <CheckInRoster event={rosterEvent} onClose={() => setRosterEvent(null)} />}
     </div>
   );
 }

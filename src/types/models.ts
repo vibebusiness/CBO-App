@@ -17,6 +17,7 @@ export type Event = {
   end_at: string | null;
   location_name: string;
   location_address: string;
+  image_url: string | null;
   status: 'published' | 'draft';
   created_by: string;
   created_at: string;

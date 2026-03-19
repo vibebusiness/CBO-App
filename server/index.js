@@ -3,13 +3,37 @@ import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import multer from 'multer';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { Pool } = pg;
 const app = express();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+
+// Serve uploaded images
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// Multer — save to /uploads with original extension
+const storage = multer.diskStorage({
+  destination: path.join(__dirname, '../uploads'),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${crypto.randomBytes(12).toString('hex')}${ext}`);
+  },
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
+  },
+});
 
 function makeToken(user) {
   return jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
@@ -31,6 +55,13 @@ function adminOnly(req, res, next) {
   next();
 }
 
+// ── Image upload ──────────────────────────────────────────────────────────
+
+app.post('/api/upload', authMiddleware, adminOnly, upload.single('image'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  res.json({ url: `/uploads/${req.file.filename}` });
+});
+
 // ── Auth ──────────────────────────────────────────────────────────────────
 
 app.post('/api/auth/signup', async (req, res) => {
@@ -38,8 +69,6 @@ app.post('/api/auth/signup', async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
   try {
     const hash = await bcrypt.hash(password, 10);
-
-    // Determine role: first user = admin, valid invite token = admin, else member
     let role = 'member';
     let tokenRow = null;
     const count = await pool.query('SELECT COUNT(*) FROM users');
@@ -50,25 +79,16 @@ app.post('/api/auth/signup', async (req, res) => {
         'SELECT * FROM invite_tokens WHERE token = $1 AND used_by IS NULL',
         [inviteToken]
       );
-      if (tkRes.rows[0]) {
-        role = 'admin';
-        tokenRow = tkRes.rows[0];
-      }
+      if (tkRes.rows[0]) { role = 'admin'; tokenRow = tkRes.rows[0]; }
     }
-
     const result = await pool.query(
       'INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id, email, role, full_name, business_name, industry, phone, created_at',
       [email.toLowerCase().trim(), hash, role]
     );
     const user = result.rows[0];
-
     if (tokenRow) {
-      await pool.query(
-        'UPDATE invite_tokens SET used_by = $1, used_at = NOW() WHERE id = $2',
-        [user.id, tokenRow.id]
-      );
+      await pool.query('UPDATE invite_tokens SET used_by = $1, used_at = NOW() WHERE id = $2', [user.id, tokenRow.id]);
     }
-
     res.json({ token: makeToken(user), user });
   } catch (e) {
     if (e.code === '23505') return res.status(400).json({ error: 'An account with that email already exists' });
@@ -135,7 +155,6 @@ app.patch('/api/profile', authMiddleware, async (req, res) => {
 app.get('/api/events', authMiddleware, async (req, res) => {
   try {
     const { all } = req.query;
-    // Admins can see all; members see published only
     const query = req.user.role === 'admin' && all === 'true'
       ? 'SELECT * FROM events ORDER BY start_at ASC'
       : "SELECT * FROM events WHERE status = 'published' ORDER BY start_at ASC";
@@ -159,13 +178,13 @@ app.get('/api/events/:id', authMiddleware, async (req, res) => {
 });
 
 app.post('/api/events', authMiddleware, adminOnly, async (req, res) => {
-  const { title, description, start_at, end_at, location_name, location_address, status } = req.body || {};
+  const { title, description, start_at, end_at, location_name, location_address, status, image_url } = req.body || {};
   if (!title || !start_at) return res.status(400).json({ error: 'Title and start time required' });
   try {
     const result = await pool.query(
-      `INSERT INTO events (title, description, start_at, end_at, location_name, location_address, status, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [title, description ?? '', start_at, end_at ?? null, location_name ?? '', location_address ?? '', status ?? 'draft', req.user.id]
+      `INSERT INTO events (title, description, start_at, end_at, location_name, location_address, status, image_url, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [title, description ?? '', start_at, end_at ?? null, location_name ?? '', location_address ?? '', status ?? 'draft', image_url ?? null, req.user.id]
     );
     res.json(result.rows[0]);
   } catch (e) {
@@ -175,13 +194,13 @@ app.post('/api/events', authMiddleware, adminOnly, async (req, res) => {
 });
 
 app.patch('/api/events/:id', authMiddleware, adminOnly, async (req, res) => {
-  const { title, description, start_at, end_at, location_name, location_address, status } = req.body || {};
+  const { title, description, start_at, end_at, location_name, location_address, status, image_url } = req.body || {};
   try {
     const result = await pool.query(
       `UPDATE events SET title = $1, description = $2, start_at = $3, end_at = $4,
-       location_name = $5, location_address = $6, status = $7
-       WHERE id = $8 RETURNING *`,
-      [title, description, start_at, end_at ?? null, location_name, location_address, status, req.params.id]
+       location_name = $5, location_address = $6, status = $7, image_url = $8
+       WHERE id = $9 RETURNING *`,
+      [title, description, start_at, end_at ?? null, location_name, location_address, status, image_url ?? null, req.params.id]
     );
     if (!result.rows[0]) return res.status(404).json({ error: 'Event not found' });
     res.json(result.rows[0]);
@@ -206,10 +225,8 @@ app.delete('/api/events/:id', authMiddleware, adminOnly, async (req, res) => {
 
 app.get('/api/events/:id/checkins', authMiddleware, async (req, res) => {
   try {
-    // Members can see their own; admins see all
     const query = req.user.role === 'admin'
-      ? `SELECT c.*, u.email, u.full_name FROM checkins c
-         JOIN users u ON c.user_id = u.id WHERE c.event_id = $1 ORDER BY c.checked_in_at DESC`
+      ? `SELECT c.*, u.email, u.full_name FROM checkins c JOIN users u ON c.user_id = u.id WHERE c.event_id = $1 ORDER BY c.checked_in_at DESC`
       : `SELECT * FROM checkins WHERE event_id = $1 AND user_id = $2`;
     const params = req.user.role === 'admin' ? [req.params.id] : [req.params.id, req.user.id];
     const result = await pool.query(query, params);
@@ -226,7 +243,6 @@ app.post('/api/events/:id/checkins', authMiddleware, async (req, res) => {
     const event = eventRes.rows[0];
     if (!event) return res.status(404).json({ error: 'Event not found' });
 
-    // Check window: 2 hours before → 6 hours after start
     const now = new Date();
     const start = new Date(event.start_at);
     const windowOpen = new Date(start.getTime() - 2 * 60 * 60 * 1000);
@@ -266,10 +282,7 @@ app.delete('/api/events/:eventId/checkins/:userId', authMiddleware, adminOnly, a
 app.post('/api/admin/invite', authMiddleware, adminOnly, async (req, res) => {
   try {
     const token = crypto.randomBytes(16).toString('hex');
-    await pool.query(
-      'INSERT INTO invite_tokens (token, created_by) VALUES ($1, $2)',
-      [token, req.user.id]
-    );
+    await pool.query('INSERT INTO invite_tokens (token, created_by) VALUES ($1, $2)', [token, req.user.id]);
     res.json({ token, link: `/signup?invite=${token}` });
   } catch (e) {
     console.error(e);
@@ -281,12 +294,9 @@ app.get('/api/admin/invite/verify', async (req, res) => {
   const { token } = req.query;
   if (!token) return res.status(400).json({ valid: false });
   try {
-    const result = await pool.query(
-      'SELECT * FROM invite_tokens WHERE token = $1 AND used_by IS NULL',
-      [token]
-    );
+    const result = await pool.query('SELECT * FROM invite_tokens WHERE token = $1 AND used_by IS NULL', [token]);
     res.json({ valid: !!result.rows[0] });
-  } catch (e) {
+  } catch {
     res.status(500).json({ valid: false });
   }
 });
