@@ -154,16 +154,32 @@ export function EventDetailPage() {
       {/* Check-in */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         {myCheckin ? (
-          <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-lg">
-              ✓
-            </div>
-            <div>
-              <div className="font-medium text-green-700">You're checked in!</div>
-              <div className="text-xs text-green-600/70">
-                Checked in at {fmtET(myCheckin.checked_in_at, 'h:mm a')} ET
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-lg">
+                ✓
+              </div>
+              <div>
+                <div className="font-medium text-green-700">You're checked in!</div>
+                <div className="text-xs text-green-600/70">
+                  Checked in at {fmtET(myCheckin.checked_in_at, 'h:mm a')} ET
+                </div>
               </div>
             </div>
+
+            {event.has_raffle && (
+              <div className="flex items-center gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-100 text-base">
+                  🎟️
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-orange-700">You're in the raffle!</div>
+                  <div className="text-xs text-orange-500">
+                    Your name has been entered — good luck!
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ) : open ? (
           <>
