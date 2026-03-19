@@ -1,23 +1,17 @@
 import React from 'react';
-import { format, parseISO, isAfter, addHours } from 'date-fns';
+import { isAfter, addHours } from 'date-fns';
 import { Link } from 'wouter';
 import { getEvents } from '../lib/api';
 import type { Event } from '../types/models';
+import { fmtET } from '../lib/tz';
 
 function EventCard({ event }: { event: Event }) {
-  const start = parseISO(event.start_at);
-
   return (
-    <Link href={`/events/${event.id}`}>
-      <a className="block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md active:scale-[0.99]">
+    <Link href={`/events/${event.id}`} className="block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md active:scale-[0.99]">
         {/* Event image */}
         {event.image_url ? (
           <div className="h-44 w-full overflow-hidden bg-slate-100">
-            <img
-              src={event.image_url}
-              alt={event.title}
-              className="h-full w-full object-cover"
-            />
+            <img src={event.image_url} alt={event.title} className="h-full w-full object-cover" />
           </div>
         ) : (
           <div className="flex h-28 w-full items-center justify-center bg-slate-100">
@@ -31,16 +25,18 @@ function EventCard({ event }: { event: Event }) {
             {/* Date badge */}
             <div className="flex min-w-[44px] flex-col items-center rounded-xl bg-slate-100 px-2 py-1.5 text-center">
               <span className="text-[10px] font-semibold uppercase leading-none text-slate-500">
-                {format(start, 'MMM')}
+                {fmtET(event.start_at, 'MMM')}
               </span>
               <span className="text-xl font-bold leading-tight text-slate-900">
-                {format(start, 'd')}
+                {fmtET(event.start_at, 'd')}
               </span>
             </div>
 
             <div className="min-w-0 flex-1">
               <div className="font-semibold leading-snug text-slate-900">{event.title}</div>
-              <div className="mt-0.5 text-xs text-slate-500">{format(start, 'EEEE · h:mm a')}</div>
+              <div className="mt-0.5 text-xs text-slate-500">
+                {fmtET(event.start_at, 'EEEE · h:mm a')} ET
+              </div>
               {event.location_name && (
                 <div className="mt-0.5 text-xs text-slate-400">📍 {event.location_name}</div>
               )}
@@ -62,7 +58,6 @@ function EventCard({ event }: { event: Event }) {
             <span className="ml-auto text-xs font-medium text-slate-400">View details →</span>
           </div>
         </div>
-      </a>
     </Link>
   );
 }
@@ -78,8 +73,8 @@ export function EventsPage() {
     });
   }, []);
 
-  const upcoming = events.filter((e) => isAfter(addHours(parseISO(e.start_at), 6), new Date()));
-  const past = events.filter((e) => !isAfter(addHours(parseISO(e.start_at), 6), new Date()));
+  const upcoming = events.filter((e) => isAfter(addHours(new Date(e.start_at), 6), new Date()));
+  const past = events.filter((e) => !isAfter(addHours(new Date(e.start_at), 6), new Date()));
 
   if (loading) {
     return (
@@ -99,9 +94,7 @@ export function EventsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {upcoming.map((e) => (
-            <EventCard key={e.id} event={e} />
-          ))}
+          {upcoming.map((e) => <EventCard key={e.id} event={e} />)}
         </div>
       )}
 
@@ -109,9 +102,7 @@ export function EventsPage() {
         <>
           <h2 className="pt-2 text-sm font-medium text-slate-400">Past events</h2>
           <div className="space-y-3">
-            {past.map((e) => (
-              <EventCard key={e.id} event={e} />
-            ))}
+            {past.map((e) => <EventCard key={e.id} event={e} />)}
           </div>
         </>
       )}

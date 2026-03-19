@@ -1,16 +1,16 @@
 import React from 'react';
-import { format, parseISO } from 'date-fns';
 import {
   getEvents, createEvent, updateEvent, deleteEvent,
   getCheckIns, removeCheckIn, createInviteLink, uploadImage,
 } from '../lib/api';
 import type { Event, CheckIn } from '../types/models';
+import { fmtET, etInputToUtc, utcToEtInput } from '../lib/tz';
 
 type EventForm = {
   title: string;
   description: string;
-  start_at: string;
-  end_at: string;
+  start_at: string;  // ET datetime-local string
+  end_at: string;    // ET datetime-local string
   location_name: string;
   location_address: string;
   status: 'draft' | 'published';
@@ -40,13 +40,7 @@ function Input({ label, ...props }: { label: string } & React.InputHTMLAttribute
   );
 }
 
-function ImageUpload({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (url: string) => void;
-}) {
+function ImageUpload({ value, onChange }: { value: string; onChange: (url: string) => void }) {
   const [uploading, setUploading] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -85,26 +79,10 @@ function ImageUpload({
           disabled={uploading}
           className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 py-6 text-sm text-slate-500 hover:border-slate-400 hover:bg-slate-100 disabled:opacity-50"
         >
-          {uploading ? (
-            <>
-              <span className="animate-spin">⟳</span>
-              Uploading…
-            </>
-          ) : (
-            <>
-              <span>📷</span>
-              Upload image
-            </>
-          )}
+          {uploading ? <><span className="animate-spin">⟳</span> Uploading…</> : <><span>📷</span> Upload image</>}
         </button>
       )}
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleFile}
-      />
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
     </div>
   );
 }
@@ -114,18 +92,10 @@ function CheckInRoster({ event, onClose }: { event: Event; onClose: () => void }
   const [loading, setLoading] = React.useState(true);
 
   const load = React.useCallback(() => {
-    getCheckIns(event.id).then((rows) => {
-      setCheckins(rows);
-      setLoading(false);
-    });
+    getCheckIns(event.id).then((rows) => { setCheckins(rows); setLoading(false); });
   }, [event.id]);
 
   React.useEffect(() => { load(); }, [load]);
-
-  const handleRemove = async (userId: string) => {
-    await removeCheckIn(event.id, userId);
-    load();
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
@@ -133,7 +103,9 @@ function CheckInRoster({ event, onClose }: { event: Event; onClose: () => void }
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h3 className="font-semibold text-slate-900">{event.title}</h3>
-            <p className="text-xs text-slate-500">{format(parseISO(event.start_at), 'MMM d · h:mm a')}</p>
+            <p className="text-xs text-slate-500">
+              {fmtET(event.start_at, 'MMM d · h:mm a')} ET
+            </p>
           </div>
           <button onClick={onClose} className="text-xl text-slate-400 hover:text-slate-700">✕</button>
         </div>
@@ -155,10 +127,12 @@ function CheckInRoster({ event, onClose }: { event: Event; onClose: () => void }
                 <div>
                   <div className="text-sm font-medium text-slate-900">{c.full_name ?? c.email}</div>
                   {c.full_name && <div className="text-xs text-slate-500">{c.email}</div>}
-                  <div className="text-xs text-slate-400">{format(parseISO(c.checked_in_at), 'h:mm a')}</div>
+                  <div className="text-xs text-slate-400">
+                    {fmtET(c.checked_in_at, 'h:mm a')} ET
+                  </div>
                 </div>
                 <button
-                  onClick={() => handleRemove(c.user_id)}
+                  onClick={async () => { await removeCheckIn(event.id, c.user_id); load(); }}
                   className="text-xs text-red-500 hover:text-red-700"
                 >
                   Remove
@@ -191,8 +165,9 @@ export function AdminPage() {
     setForm({
       title: event.title,
       description: event.description,
-      start_at: event.start_at.slice(0, 16),
-      end_at: event.end_at?.slice(0, 16) ?? '',
+      // Pre-fill datetime-local inputs in ET so admins see the ET time they entered
+      start_at: utcToEtInput(event.start_at),
+      end_at: event.end_at ? utcToEtInput(event.end_at) : '',
       location_name: event.location_name ?? '',
       location_address: event.location_address ?? '',
       status: event.status,
@@ -209,8 +184,9 @@ export function AdminPage() {
       const payload = {
         title: form.title,
         description: form.description,
-        start_at: new Date(form.start_at).toISOString(),
-        end_at: form.end_at ? new Date(form.end_at).toISOString() : undefined,
+        // Interpret the datetime-local value as Eastern Time before sending to server
+        start_at: etInputToUtc(form.start_at),
+        end_at: form.end_at ? etInputToUtc(form.end_at) : undefined,
         location_name: form.location_name,
         location_address: form.location_address,
         status: form.status,
@@ -278,10 +254,7 @@ export function AdminPage() {
                 {editingId ? 'Edit event' : 'New event'}
               </h2>
 
-              <ImageUpload
-                value={form.image_url}
-                onChange={(url) => setForm((f) => ({ ...f, image_url: url }))}
-              />
+              <ImageUpload value={form.image_url} onChange={(url) => setForm((f) => ({ ...f, image_url: url }))} />
 
               <Input
                 label="Title *"
@@ -301,15 +274,16 @@ export function AdminPage() {
                 />
               </div>
 
+              {/* Time inputs — labels clarify ET */}
               <Input
-                label="Start *"
+                label="Start (Eastern Time) *"
                 type="datetime-local"
                 value={form.start_at}
                 onChange={(e) => setForm((f) => ({ ...f, start_at: e.target.value }))}
               />
 
               <Input
-                label="End (optional)"
+                label="End — optional (Eastern Time)"
                 type="datetime-local"
                 value={form.end_at}
                 onChange={(e) => setForm((f) => ({ ...f, end_at: e.target.value }))}
@@ -377,7 +351,9 @@ export function AdminPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium text-slate-900">{event.title}</div>
-                      <div className="text-xs text-slate-500">{format(parseISO(event.start_at), 'EEE, MMM d · h:mm a')}</div>
+                      <div className="text-xs text-slate-500">
+                        {fmtET(event.start_at, 'EEE, MMM d · h:mm a')} ET
+                      </div>
                       {event.location_name && (
                         <div className="text-xs text-slate-400">📍 {event.location_name}</div>
                       )}
@@ -415,25 +391,15 @@ export function AdminPage() {
               Generate a one-time invite link. Anyone who signs up with this link will be granted admin access.
             </p>
           </div>
-          <button
-            onClick={handleGenerateInvite}
-            className="w-full rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
-          >
+          <button onClick={handleGenerateInvite} className="w-full rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white transition hover:bg-slate-700">
             Generate invite link
           </button>
           {inviteLink && (
             <div className="space-y-2">
               <p className="text-xs text-slate-500">Share this link (one-time use):</p>
               <div className="flex gap-2">
-                <input
-                  readOnly
-                  value={inviteLink}
-                  className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 outline-none"
-                />
-                <button
-                  onClick={() => navigator.clipboard.writeText(inviteLink)}
-                  className="shrink-0 rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
-                >
+                <input readOnly value={inviteLink} className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 outline-none" />
+                <button onClick={() => navigator.clipboard.writeText(inviteLink)} className="shrink-0 rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
                   Copy
                 </button>
               </div>

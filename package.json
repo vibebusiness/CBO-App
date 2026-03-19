@@ -15,6 +15,7 @@
     "@supabase/supabase-js": "^2.99.3",
     "bcryptjs": "^3.0.3",
     "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",

@@ -1,13 +1,14 @@
 import React from 'react';
 import { useRoute, useLocation } from 'wouter';
-import { format, parseISO, isAfter, subHours, addHours } from 'date-fns';
+import { isAfter, subHours, addHours } from 'date-fns';
 import { getEvent, getCheckIns, checkIn } from '../lib/api';
 import type { Event, CheckIn } from '../types/models';
 import { useAuth } from '../state/auth';
+import { fmtET } from '../lib/tz';
 
 function isCheckInOpen(event: Event): boolean {
   const now = new Date();
-  const start = parseISO(event.start_at);
+  const start = new Date(event.start_at);
   return now >= subHours(start, 2) && now <= addHours(start, 6);
 }
 
@@ -76,7 +77,6 @@ export function EventDetailPage() {
     );
   }
 
-  const start = parseISO(event.start_at);
   const open = isCheckInOpen(event);
 
   return (
@@ -92,11 +92,7 @@ export function EventDetailPage() {
       {/* Event image */}
       {event.image_url && (
         <div className="mb-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-          <img
-            src={event.image_url}
-            alt={event.title}
-            className="h-52 w-full object-cover"
-          />
+          <img src={event.image_url} alt={event.title} className="h-52 w-full object-cover" />
         </div>
       )}
 
@@ -118,11 +114,12 @@ export function EventDetailPage() {
             </div>
             <div>
               <div className="text-sm font-medium text-slate-900">
-                {format(start, 'EEEE, MMMM d, yyyy')}
+                {fmtET(event.start_at, 'EEEE, MMMM d, yyyy')}
               </div>
               <div className="text-xs text-slate-500">
-                {format(start, 'h:mm a')}
-                {event.end_at && ` – ${format(parseISO(event.end_at), 'h:mm a')}`}
+                {fmtET(event.start_at, 'h:mm a')}
+                {event.end_at && ` – ${fmtET(event.end_at, 'h:mm a')}`}
+                {' ET'}
               </div>
             </div>
           </div>
@@ -147,7 +144,9 @@ export function EventDetailPage() {
       {/* Description */}
       {event.description && (
         <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">About this event</h2>
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            About this event
+          </h2>
           <p className="text-sm leading-relaxed text-slate-700">{event.description}</p>
         </div>
       )}
@@ -162,7 +161,7 @@ export function EventDetailPage() {
             <div>
               <div className="font-medium text-green-700">You're checked in!</div>
               <div className="text-xs text-green-600/70">
-                Checked in at {format(parseISO(myCheckin.checked_in_at), 'h:mm a')}
+                Checked in at {fmtET(myCheckin.checked_in_at, 'h:mm a')} ET
               </div>
             </div>
           </div>
@@ -179,7 +178,7 @@ export function EventDetailPage() {
           </>
         ) : (
           <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-4 text-center text-sm text-slate-400">
-            {isAfter(new Date(), addHours(parseISO(event.start_at), 6))
+            {isAfter(new Date(), addHours(new Date(event.start_at), 6))
               ? 'Check-in is closed for this event'
               : `Check-in opens 2 hours before the event starts`}
           </div>

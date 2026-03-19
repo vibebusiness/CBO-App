@@ -5,16 +5,15 @@ function NavLink({ href, label, icon }: { href: string; label: string; icon: str
   const [loc] = useLocation();
   const active = loc === href || (href !== '/calendar' && loc.startsWith(href));
   return (
-    <Link href={href}>
-      <a
-        className={[
-          'flex flex-col items-center gap-0.5 px-3 py-2 text-xs font-medium transition',
-          active ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600',
-        ].join(' ')}
-      >
-        <span className="text-lg leading-none">{icon}</span>
-        {label}
-      </a>
+    <Link
+      href={href}
+      className={[
+        'flex flex-col items-center gap-0.5 px-3 py-2 text-xs font-medium transition',
+        active ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600',
+      ].join(' ')}
+    >
+      <span className="text-lg leading-none">{icon}</span>
+      {label}
     </Link>
   );
 }

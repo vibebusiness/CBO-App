@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval,
+  startOfMonth, endOfMonth, eachDayOfInterval,
   isSameMonth, isSameDay, isToday, addMonths, subMonths, getDay,
   isAfter, addHours,
 } from 'date-fns';
@@ -8,6 +8,7 @@ import { Link } from 'wouter';
 import { getEvents, getCheckIns } from '../lib/api';
 import type { Event } from '../types/models';
 import { useAuth } from '../state/auth';
+import { fmtET, toET } from '../lib/tz';
 
 export function CalendarPage() {
   const { user } = useAuth();
@@ -34,7 +35,11 @@ export function CalendarPage() {
 
   const days = eachDayOfInterval({ start: startOfMonth(month), end: endOfMonth(month) });
   const startPad = getDay(startOfMonth(month));
-  const eventsOnDay = (day: Date) => events.filter((e) => isSameDay(parseISO(e.start_at), day));
+
+  // Compare event dates in ET so events on e.g. 11pm ET March 19 show on March 19, not March 20
+  const eventsOnDay = (day: Date) =>
+    events.filter((e) => isSameDay(toET(e.start_at), day));
+
   const selectedEvents = selected ? eventsOnDay(selected) : [];
 
   return (
@@ -47,7 +52,7 @@ export function CalendarPage() {
         >
           ‹
         </button>
-        <span className="text-sm font-semibold text-slate-800">{format(month, 'MMMM yyyy')}</span>
+        <span className="text-sm font-semibold text-slate-800">{fmtET(month, 'MMMM yyyy')}</span>
         <button
           onClick={() => setMonth((m) => addMonths(m, 1))}
           className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm hover:bg-slate-50"
@@ -84,7 +89,7 @@ export function CalendarPage() {
                   : 'text-slate-600 hover:bg-slate-100',
               ].join(' ')}
             >
-              <span>{format(day, 'd')}</span>
+              <span>{fmtET(day, 'd')}</span>
               {dayEvents.length > 0 && (
                 <span className={['mt-0.5 h-1.5 w-1.5 rounded-full', isSelected ? 'bg-white' : 'bg-orange-400'].join(' ')} />
               )}
@@ -97,7 +102,7 @@ export function CalendarPage() {
       {selected && (
         <div className="space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            {format(selected, 'EEEE, MMMM d')}
+            {fmtET(selected, 'EEEE, MMMM d')}
           </h2>
           {selectedEvents.length === 0 ? (
             <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-400">
@@ -105,8 +110,7 @@ export function CalendarPage() {
             </div>
           ) : (
             selectedEvents.map((event) => (
-              <Link key={event.id} href={`/events/${event.id}`}>
-                <a className="block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md">
+              <Link key={event.id} href={`/events/${event.id}`} className="block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md">
                   {event.image_url && (
                     <div className="h-32 w-full overflow-hidden bg-slate-100">
                       <img src={event.image_url} alt={event.title} className="h-full w-full object-cover" />
@@ -117,8 +121,8 @@ export function CalendarPage() {
                       <div>
                         <div className="font-medium text-slate-900">{event.title}</div>
                         <div className="mt-0.5 text-xs text-slate-500">
-                          {format(parseISO(event.start_at), 'h:mm a')}
-                          {event.end_at && ` – ${format(parseISO(event.end_at), 'h:mm a')}`}
+                          {fmtET(event.start_at, 'h:mm a')} ET
+                          {event.end_at && ` – ${fmtET(event.end_at, 'h:mm a')}`}
                         </div>
                         {event.location_name && (
                           <div className="mt-0.5 text-xs text-slate-400">📍 {event.location_name}</div>
@@ -137,7 +141,6 @@ export function CalendarPage() {
                       <p className="mt-2 line-clamp-2 text-sm text-slate-500">{event.description}</p>
                     )}
                   </div>
-                </a>
               </Link>
             ))
           )}
@@ -149,15 +152,13 @@ export function CalendarPage() {
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Coming up</h2>
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
           {events
-            .filter((e) => isAfter(addHours(parseISO(e.start_at), 6), new Date()))
+            .filter((e) => isAfter(addHours(new Date(e.start_at), 6), new Date()))
             .slice(0, 5)
             .map((event, idx, arr) => (
-              <Link key={event.id} href={`/events/${event.id}`}>
-                <a className={[
+              <Link key={event.id} href={`/events/${event.id}`} className={[
                   'flex items-center gap-3 px-4 py-3 transition hover:bg-slate-50',
                   idx < arr.length - 1 ? 'border-b border-slate-100' : '',
                 ].join(' ')}>
-                  {/* Thumbnail */}
                   {event.image_url ? (
                     <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-slate-100">
                       <img src={event.image_url} alt="" className="h-full w-full object-cover" />
@@ -167,25 +168,20 @@ export function CalendarPage() {
                       🎟️
                     </div>
                   )}
-
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-slate-900">{event.title}</div>
                     <div className="text-xs text-slate-400">
-                      {format(parseISO(event.start_at), 'MMM d · h:mm a')}
+                      {fmtET(event.start_at, 'MMM d · h:mm a')} ET
                       {event.location_name ? ` · ${event.location_name}` : ''}
                     </div>
                   </div>
-
                   <div className="flex shrink-0 items-center gap-1.5">
-                    {checkedInIds.has(event.id) && (
-                      <span className="text-xs text-green-600">✓</span>
-                    )}
+                    {checkedInIds.has(event.id) && <span className="text-xs text-green-600">✓</span>}
                     <span className="text-xs text-slate-300">›</span>
                   </div>
-                </a>
               </Link>
             ))}
-          {events.filter((e) => isAfter(addHours(parseISO(e.start_at), 6), new Date())).length === 0 && (
+          {events.filter((e) => isAfter(addHours(new Date(e.start_at), 6), new Date())).length === 0 && (
             <div className="px-4 py-4 text-sm text-slate-400">No upcoming events</div>
           )}
         </div>
