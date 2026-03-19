@@ -19,7 +19,7 @@ function NavLink({ href, label }: { href: string; label: string }) {
   );
 }
 
-export function Layout({ children }: { children: React.ReactNode }) {
+export function AuthedLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
 
   return (
