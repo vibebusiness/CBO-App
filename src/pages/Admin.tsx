@@ -196,7 +196,7 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (html: s
 
   React.useEffect(() => {
     if (editor && editor.getHTML() !== value) {
-      editor.commands.setContent(value, false);
+      editor.commands.setContent(value, { emitUpdate: false });
     }
   }, [value, editor]);
 
