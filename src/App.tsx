@@ -7,6 +7,14 @@ import { ProfilePage } from './pages/Profile';
 import { AdminPage } from './pages/Admin';
 import { useAuth } from './state/auth';
 
+function AdminRoute() {
+  const { profile } = useAuth();
+  if (profile?.role !== 'admin') {
+    return <Redirect to="/events" />;
+  }
+  return <AdminPage />;
+}
+
 function AuthedRoutes() {
   return (
     <AuthedLayout>
@@ -14,7 +22,7 @@ function AuthedRoutes() {
         <Route path="/calendar" component={CalendarPage} />
         <Route path="/events" component={EventsPage} />
         <Route path="/profile" component={ProfilePage} />
-        <Route path="/admin" component={AdminPage} />
+        <Route path="/admin" component={AdminRoute} />
         <Route>
           <Redirect to="/calendar" />
         </Route>

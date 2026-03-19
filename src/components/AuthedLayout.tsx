@@ -20,7 +20,8 @@ function NavLink({ href, label }: { href: string; label: string }) {
 }
 
 export function AuthedLayout({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
 
   return (
     <div className="min-h-full">
@@ -48,7 +49,7 @@ export function AuthedLayout({ children }: { children: React.ReactNode }) {
           <NavLink href="/calendar" label="Calendar" />
           <NavLink href="/events" label="Events" />
           <NavLink href="/profile" label="Profile" />
-          <NavLink href="/admin" label="Admin" />
+          {isAdmin && <NavLink href="/admin" label="Admin" />}
         </div>
       </nav>
     </div>
