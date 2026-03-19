@@ -141,21 +141,8 @@ export function EventDetailPage() {
         </div>
       </div>
 
-      {/* Description */}
-      {event.description && (
-        <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-            About this event
-          </h2>
-          <div
-            className="prose prose-sm max-w-none text-slate-700"
-            dangerouslySetInnerHTML={{ __html: event.description }}
-          />
-        </div>
-      )}
-
       {/* Check-in */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         {myCheckin ? (
           <div className="space-y-3">
             <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-4">
@@ -206,6 +193,19 @@ export function EventDetailPage() {
           <p className="mt-2 text-center text-xs text-slate-500">{msg}</p>
         )}
       </div>
+
+      {/* Description */}
+      {event.description && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            About this event
+          </h2>
+          <div
+            className="prose prose-sm max-w-none text-slate-700"
+            dangerouslySetInnerHTML={{ __html: event.description }}
+          />
+        </div>
+      )}
     </div>
   );
 }
