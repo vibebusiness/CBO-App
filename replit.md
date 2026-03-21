@@ -21,10 +21,14 @@ Mobile-first web app for Charlotte Business Owners. Members sign up, build a pro
 ## Database Schema
 
 ```sql
-users       — id, email, password_hash, full_name, business_name, industry, phone, role (admin|member), created_at
-events      — id, title, description, start_at, end_at, location_name, location_address, status (draft|published), created_by, created_at
-checkins    — id, event_id, user_id, checked_in_at  [UNIQUE(event_id, user_id)]
+users         — id, email, password_hash, full_name, business_name, industry, phone, role (admin|member), created_at
+events        — id, title, description, image_url, start_at, end_at, location_name, location_address, status (draft|published), has_raffle, created_by, created_at
+checkins      — id, event_id, user_id, checked_in_at  [UNIQUE(event_id, user_id)]
 invite_tokens — id, token, created_by, used_by, used_at, created_at
+raffle_winners — id, event_id, user_id, won_at
+event_images  — id (uuid), data (bytea), mime_type, created_at
+               ↑ Image blobs stored in DB so they persist across deployments.
+               ↑ image_url in events is /uploads/{uuid}, served via GET /uploads/:id
 ```
 
 ## Project Structure

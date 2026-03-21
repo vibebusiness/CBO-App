@@ -16,19 +16,34 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 
 app.use(express.json({ limit: '10mb' }));
 
-// Serve uploaded images
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Create event_images table on startup so images persist in PostgreSQL across deployments
+pool.query(`
+  CREATE TABLE IF NOT EXISTS event_images (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    data bytea NOT NULL,
+    mime_type varchar(64) NOT NULL,
+    created_at timestamptz DEFAULT now()
+  )
+`).catch((e) => console.error('event_images table init failed:', e));
 
-// Multer — save to /uploads with original extension
-const storage = multer.diskStorage({
-  destination: path.join(__dirname, '../uploads'),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${crypto.randomBytes(12).toString('hex')}${ext}`);
-  },
+// Serve uploaded images directly from PostgreSQL
+app.get('/uploads/:id', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT data, mime_type FROM event_images WHERE id = $1', [req.params.id]);
+    if (!result.rows.length) return res.status(404).send('Not found');
+    const { data, mime_type } = result.rows[0];
+    res.setHeader('Content-Type', mime_type);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.send(data);
+  } catch (e) {
+    console.error('Image serve error:', e);
+    res.status(500).send('Error');
+  }
 });
+
+// Multer — memory storage; bytes are written to PostgreSQL in the upload handler
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith('image/')) cb(null, true);
@@ -58,9 +73,18 @@ function adminOnly(req, res, next) {
 
 // ── Image upload ──────────────────────────────────────────────────────────
 
-app.post('/api/upload', authMiddleware, adminOnly, upload.single('image'), (req, res) => {
+app.post('/api/upload', authMiddleware, adminOnly, upload.single('image'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  res.json({ url: `/uploads/${req.file.filename}` });
+  try {
+    const result = await pool.query(
+      'INSERT INTO event_images (data, mime_type) VALUES ($1, $2) RETURNING id',
+      [req.file.buffer, req.file.mimetype]
+    );
+    res.json({ url: `/uploads/${result.rows[0].id}` });
+  } catch (e) {
+    console.error('Image upload error:', e);
+    res.status(500).json({ error: 'Upload failed' });
+  }
 });
 
 // ── Auth ──────────────────────────────────────────────────────────────────
