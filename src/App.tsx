@@ -1,4 +1,4 @@
-import { Route, Switch, Redirect } from 'wouter';
+import { Route, Switch, Redirect, useRoute } from 'wouter';
 import { AuthedLayout } from './components/AuthedLayout';
 import { AuthPage } from './pages/Auth';
 import { SetupPage } from './pages/Setup';
@@ -7,13 +7,26 @@ import { EventsPage } from './pages/Events';
 import { EventDetailPage } from './pages/EventDetail';
 import { ProfilePage } from './pages/Profile';
 import { AdminPage } from './pages/Admin';
+import { DoorCheckPage } from './pages/DoorCheck';
 import { useAuth } from './state/auth';
 
 function AuthedApp() {
   const { user } = useAuth();
+  const [isDoorRoute] = useRoute('/door/:id');
 
   if (!user?.full_name) {
     return <SetupPage />;
+  }
+
+  // Door check view is full-screen — no nav layout
+  if (isDoorRoute) {
+    return (
+      <Switch>
+        <Route path="/door/:id">
+          {user.role === 'admin' ? <DoorCheckPage /> : <Redirect to="/events" />}
+        </Route>
+      </Switch>
+    );
   }
 
   return (
