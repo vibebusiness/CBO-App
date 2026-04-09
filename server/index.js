@@ -62,6 +62,11 @@ async function sendGhlPasswordResetEmail(toEmail, resetLink) {
       `${GHL}/contacts/search?query=${encodeURIComponent(toEmail)}&locationId=${locationId}`,
       { headers }
     );
+    if (!searchRes.ok) {
+      const errText = await searchRes.text();
+      console.error(`GHL contact search failed (${searchRes.status}):`, errText);
+      throw new Error('GHL contact search failed');
+    }
     const searchData = await searchRes.json();
     const found = searchData.contacts?.find(
       (c) => c.email?.toLowerCase() === toEmail.toLowerCase()
@@ -74,6 +79,11 @@ async function sendGhlPasswordResetEmail(toEmail, resetLink) {
         headers,
         body: JSON.stringify({ locationId, email: toEmail }),
       });
+      if (!createRes.ok) {
+        const errText = await createRes.text();
+        console.error(`GHL contact create failed (${createRes.status}):`, errText);
+        throw new Error('GHL contact create failed');
+      }
       const createData = await createRes.json();
       contactId = createData.contact?.id;
     }
