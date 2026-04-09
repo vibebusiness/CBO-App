@@ -286,27 +286,37 @@ app.get('/api/auth/reset-password/validate', async (req, res) => {
   }
 });
 
-// POST /api/auth/reset-password — consume token and update password
+// POST /api/auth/reset-password — consume token atomically and update password
 app.post('/api/auth/reset-password', async (req, res) => {
   const { token, password } = req.body || {};
   if (!token || !password) return res.status(400).json({ error: 'Token and password are required' });
   if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  const client = await pool.connect();
   try {
-    const resetRes = await pool.query(
-      'SELECT id, user_id FROM password_resets WHERE token = $1 AND used_at IS NULL AND expires_at > NOW()',
+    await client.query('BEGIN');
+    // Atomically mark the token as used and return the user_id in one statement
+    const resetRes = await client.query(
+      `UPDATE password_resets
+         SET used_at = NOW()
+       WHERE token = $1 AND used_at IS NULL AND expires_at > NOW()
+       RETURNING user_id`,
       [token]
     );
     if (!resetRes.rows[0]) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: 'This reset link has expired or already been used.' });
     }
-    const { id: resetId, user_id: userId } = resetRes.rows[0];
+    const { user_id: userId } = resetRes.rows[0];
     const hash = await bcrypt.hash(password, 10);
-    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, userId]);
-    await pool.query('UPDATE password_resets SET used_at = NOW() WHERE id = $1', [resetId]);
+    await client.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, userId]);
+    await client.query('COMMIT');
     res.json({ ok: true });
   } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error(e);
     res.status(500).json({ error: 'Server error' });
+  } finally {
+    client.release();
   }
 });
 

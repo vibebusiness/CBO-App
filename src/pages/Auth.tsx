@@ -17,8 +17,12 @@ export function AuthPage() {
   const inviteToken = params.get('invite');
   const hasInvite = !!inviteToken;
 
+  const resetDone = params.get('reset') === '1';
+
   const [mode, setMode] = React.useState<'signin' | 'signup'>(hasInvite ? 'signup' : 'signin');
-  const [msg, setMsg] = React.useState<string | null>(null);
+  const [msg, setMsg] = React.useState<string | null>(
+    resetDone ? 'Password updated — please log in.' : null
+  );
   const [showForgot, setShowForgot] = React.useState(false);
   const [forgotEmail, setForgotEmail] = React.useState('');
   const [forgotStatus, setForgotStatus] = React.useState<'idle' | 'sending' | 'sent'>('idle');
