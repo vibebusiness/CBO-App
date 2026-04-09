@@ -257,14 +257,21 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
 });
 
 // POST /api/auth/forgot-password — generate token and send reset email via GHL
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 app.post('/api/auth/forgot-password', async (req, res) => {
   const { email } = req.body || {};
-  if (!email) return res.status(400).json({ error: 'Email is required' });
+  if (!email || typeof email !== 'string' || !EMAIL_RE.test(email.trim())) {
+    return res.status(400).json({ error: 'A valid email address is required' });
+  }
   // Always respond neutrally so we don't reveal whether the email exists
   res.json({ ok: true });
+  const normalised = email.toLowerCase().trim();
   try {
-    const userRes = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase().trim()]);
-    if (!userRes.rows[0]) return; // email not found — silently do nothing
+    const userRes = await pool.query('SELECT id FROM users WHERE email = $1', [normalised]);
+    if (!userRes.rows[0]) {
+      console.info(`[forgot-password] no account for ${normalised} — skipping`);
+      return;
+    }
     const userId = userRes.rows[0].id;
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
@@ -274,9 +281,14 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     );
     const appUrl = process.env.APP_URL || 'https://cbo-app.replit.app';
     const resetLink = `${appUrl}/reset-password?token=${token}`;
-    await sendGhlPasswordResetEmail(email.toLowerCase().trim(), resetLink);
+    if (!process.env.GHL_API_KEY || !process.env.GHL_LOCATION_ID) {
+      console.warn('[forgot-password] GHL_API_KEY or GHL_LOCATION_ID missing — reset email NOT sent');
+      return;
+    }
+    await sendGhlPasswordResetEmail(normalised, resetLink);
+    console.info(`[forgot-password] reset email dispatched to ${normalised}`);
   } catch (e) {
-    console.error('Forgot-password error:', e);
+    console.error('[forgot-password] error:', e);
   }
 });
 
