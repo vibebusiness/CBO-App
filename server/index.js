@@ -52,14 +52,14 @@ async function sendGhlPasswordResetEmail(toEmail, resetLink) {
   const headers = {
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
-    Version: '2021-07-28',
+    Version: '2021-04-15',
   };
 
   // 1. Find existing contact or create one
   let contactId;
   try {
     const searchRes = await fetch(
-      `${GHL}/contacts/search?query=${encodeURIComponent(toEmail)}&locationId=${locationId}`,
+      `${GHL}/contacts/?locationId=${locationId}&query=${encodeURIComponent(toEmail)}`,
       { headers }
     );
     if (!searchRes.ok) {
@@ -68,7 +68,7 @@ async function sendGhlPasswordResetEmail(toEmail, resetLink) {
       throw new Error('GHL contact search failed');
     }
     const searchData = await searchRes.json();
-    const found = searchData.contacts?.find(
+    const found = (searchData.contacts ?? searchData.data ?? []).find(
       (c) => c.email?.toLowerCase() === toEmail.toLowerCase()
     );
     if (found) {
@@ -95,7 +95,7 @@ async function sendGhlPasswordResetEmail(toEmail, resetLink) {
   if (!contactId) throw new Error('Could not obtain GHL contactId');
 
   // 2. Send the email via GHL conversations API
-  const emailBody = `
+  const html = `
     <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
       <img src="https://cbo-app.replit.app/cbo-logo.png" alt="Charlotte Business Owners" style="height:48px; margin-bottom:24px;" />
       <h2 style="color:#0f172a; margin-bottom:8px;">Password Reset</h2>
@@ -106,6 +106,7 @@ async function sendGhlPasswordResetEmail(toEmail, resetLink) {
       <p style="color:#94a3b8; font-size:12px;">Charlotte Business Owners · Charlotte, NC</p>
     </div>
   `;
+  const message = `Reset your Charlotte Business Owners password by visiting: ${resetLink}\n\nThis link expires in 1 hour. If you didn't request this, ignore this email.`;
 
   const msgRes = await fetch(`${GHL}/conversations/messages`, {
     method: 'POST',
@@ -115,7 +116,8 @@ async function sendGhlPasswordResetEmail(toEmail, resetLink) {
       contactId,
       locationId,
       subject: 'Charlotte Business Owners Password Reset',
-      emailBody,
+      html,
+      message,
     }),
   });
 
