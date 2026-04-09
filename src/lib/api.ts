@@ -148,3 +148,32 @@ export async function createInviteLink(): Promise<{ token: string; link: string 
 export async function verifyInviteToken(token: string): Promise<{ valid: boolean }> {
   return request(`/admin/invite/verify?token=${token}`);
 }
+
+// Password reset
+export async function forgotPassword(email: string): Promise<{ ok: boolean }> {
+  const res = await fetch('/api/auth/forgot-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'Request failed');
+  return data;
+}
+
+export async function validateResetToken(token: string): Promise<{ valid: boolean }> {
+  const res = await fetch(`/api/auth/reset-password/validate?token=${encodeURIComponent(token)}`);
+  const data = await res.json();
+  return data;
+}
+
+export async function resetPassword(token: string, password: string): Promise<{ ok: boolean }> {
+  const res = await fetch('/api/auth/reset-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, password }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'Request failed');
+  return data;
+}

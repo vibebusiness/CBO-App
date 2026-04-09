@@ -26,6 +26,96 @@ pool.query(`
   )
 `).catch((e) => console.error('event_images table init failed:', e));
 
+// Create password_resets table for forgot-password flow
+pool.query(`
+  CREATE TABLE IF NOT EXISTS password_resets (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL,
+    token varchar(128) NOT NULL UNIQUE,
+    expires_at timestamptz NOT NULL,
+    used_at timestamptz,
+    created_at timestamptz DEFAULT now()
+  )
+`).catch((e) => console.error('password_resets table init failed:', e));
+
+// ── GHL email helper ───────────────────────────────────────────────────────
+
+async function sendGhlPasswordResetEmail(toEmail, resetLink) {
+  const apiKey = process.env.GHL_API_KEY;
+  const locationId = process.env.GHL_LOCATION_ID;
+  if (!apiKey || !locationId) {
+    console.error('GHL_API_KEY or GHL_LOCATION_ID not set — skipping email send');
+    return;
+  }
+
+  const GHL = 'https://services.leadconnectorhq.com';
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+    Version: '2021-07-28',
+  };
+
+  // 1. Find existing contact or create one
+  let contactId;
+  try {
+    const searchRes = await fetch(
+      `${GHL}/contacts/search?query=${encodeURIComponent(toEmail)}&locationId=${locationId}`,
+      { headers }
+    );
+    const searchData = await searchRes.json();
+    const found = searchData.contacts?.find(
+      (c) => c.email?.toLowerCase() === toEmail.toLowerCase()
+    );
+    if (found) {
+      contactId = found.id;
+    } else {
+      const createRes = await fetch(`${GHL}/contacts/`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ locationId, email: toEmail }),
+      });
+      const createData = await createRes.json();
+      contactId = createData.contact?.id;
+    }
+  } catch (e) {
+    console.error('GHL contact lookup/create failed:', e);
+    throw e;
+  }
+
+  if (!contactId) throw new Error('Could not obtain GHL contactId');
+
+  // 2. Send the email via GHL conversations API
+  const emailBody = `
+    <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+      <img src="https://cbo-app.replit.app/cbo-logo.png" alt="Charlotte Business Owners" style="height:48px; margin-bottom:24px;" />
+      <h2 style="color:#0f172a; margin-bottom:8px;">Password Reset</h2>
+      <p style="color:#475569;">You requested a password reset for your Charlotte Business Owners account. Click the button below to set a new password. This link expires in <strong>1 hour</strong>.</p>
+      <a href="${resetLink}" style="display:inline-block; margin-top:20px; padding:12px 24px; background:#0f172a; color:#fff; text-decoration:none; border-radius:10px; font-weight:600;">Reset my password</a>
+      <p style="margin-top:24px; color:#94a3b8; font-size:13px;">If you didn't request this, you can safely ignore this email.</p>
+      <hr style="border:none; border-top:1px solid #e2e8f0; margin:24px 0;" />
+      <p style="color:#94a3b8; font-size:12px;">Charlotte Business Owners · Charlotte, NC</p>
+    </div>
+  `;
+
+  const msgRes = await fetch(`${GHL}/conversations/messages`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      type: 'Email',
+      contactId,
+      locationId,
+      subject: 'Charlotte Business Owners Password Reset',
+      emailBody,
+    }),
+  });
+
+  if (!msgRes.ok) {
+    const err = await msgRes.text();
+    console.error('GHL message send failed:', err);
+    throw new Error('Email delivery failed');
+  }
+}
+
 // Serve uploaded images directly from PostgreSQL
 app.get('/uploads/:id', async (req, res) => {
   try {
@@ -150,6 +240,70 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
     );
     if (!result.rows[0]) return res.status(404).json({ error: 'User not found' });
     res.json(result.rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/auth/forgot-password — generate token and send reset email via GHL
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const { email } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+  // Always respond neutrally so we don't reveal whether the email exists
+  res.json({ ok: true });
+  try {
+    const userRes = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase().trim()]);
+    if (!userRes.rows[0]) return; // email not found — silently do nothing
+    const userId = userRes.rows[0].id;
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await pool.query(
+      'INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, $3)',
+      [userId, token, expiresAt]
+    );
+    const appUrl = process.env.APP_URL || 'https://cbo-app.replit.app';
+    const resetLink = `${appUrl}/reset-password?token=${token}`;
+    await sendGhlPasswordResetEmail(email.toLowerCase().trim(), resetLink);
+  } catch (e) {
+    console.error('Forgot-password error:', e);
+  }
+});
+
+// GET /api/auth/reset-password/validate?token= — check if a reset token is still valid
+app.get('/api/auth/reset-password/validate', async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).json({ valid: false, error: 'Token required' });
+  try {
+    const result = await pool.query(
+      'SELECT id FROM password_resets WHERE token = $1 AND used_at IS NULL AND expires_at > NOW()',
+      [token]
+    );
+    res.json({ valid: !!result.rows[0] });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ valid: false, error: 'Server error' });
+  }
+});
+
+// POST /api/auth/reset-password — consume token and update password
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { token, password } = req.body || {};
+  if (!token || !password) return res.status(400).json({ error: 'Token and password are required' });
+  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  try {
+    const resetRes = await pool.query(
+      'SELECT id, user_id FROM password_resets WHERE token = $1 AND used_at IS NULL AND expires_at > NOW()',
+      [token]
+    );
+    if (!resetRes.rows[0]) {
+      return res.status(400).json({ error: 'This reset link has expired or already been used.' });
+    }
+    const { id: resetId, user_id: userId } = resetRes.rows[0];
+    const hash = await bcrypt.hash(password, 10);
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, userId]);
+    await pool.query('UPDATE password_resets SET used_at = NOW() WHERE id = $1', [resetId]);
+    res.json({ ok: true });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Server error' });

@@ -8,6 +8,7 @@ import { EventDetailPage } from './pages/EventDetail';
 import { ProfilePage } from './pages/Profile';
 import { AdminPage } from './pages/Admin';
 import { DoorCheckPage } from './pages/DoorCheck';
+import { ResetPasswordPage } from './pages/ResetPassword';
 import { useAuth } from './state/auth';
 
 function AuthedApp() {
@@ -69,6 +70,7 @@ export default function App() {
       <Route path="/signup">
         {user ? <Redirect to="/calendar" /> : <AuthPage />}
       </Route>
+      <Route path="/reset-password" component={ResetPasswordPage} />
       <Route>
         {user ? <AuthedApp /> : <Redirect to="/" />}
       </Route>
