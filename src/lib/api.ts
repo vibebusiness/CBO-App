@@ -1,3 +1,5 @@
+import type { Event, CheckIn, NetworkingRound, NetworkingCurrent } from '../types/models';
+
 const BASE = '/api';
 
 export function getToken(): string | null {
@@ -37,8 +39,6 @@ export type AppUser = {
   phone: string | null;
   created_at: string;
 };
-
-import type { Event, CheckIn } from '../types/models';
 
 // Auth
 export async function signUp(email: string, password: string, inviteToken?: string) {
@@ -138,6 +138,25 @@ export async function recordRaffleWinner(eventId: string, userId: string): Promi
     method: 'POST',
     body: JSON.stringify({ user_id: userId }),
   });
+}
+
+// Networking
+export async function getNetworkingRounds(eventId: string): Promise<NetworkingRound[]> {
+  return request(`/events/${eventId}/networking/rounds`);
+}
+
+export async function runNetworkingRound(
+  eventId: string,
+  groupSize: number
+): Promise<{ round_number: number }> {
+  return request(`/events/${eventId}/networking/round`, {
+    method: 'POST',
+    body: JSON.stringify({ group_size: groupSize }),
+  });
+}
+
+export async function getNetworkingCurrent(eventId: string): Promise<NetworkingCurrent | null> {
+  return request(`/events/${eventId}/networking/current`);
 }
 
 // Admin invite

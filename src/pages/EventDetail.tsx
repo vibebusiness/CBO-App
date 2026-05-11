@@ -1,8 +1,8 @@
 import React from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { isAfter, subHours, addHours } from 'date-fns';
-import { getEvent, getCheckIns, checkIn } from '../lib/api';
-import type { Event, CheckIn } from '../types/models';
+import { getEvent, getCheckIns, checkIn, getNetworkingCurrent, getToken } from '../lib/api';
+import type { Event, CheckIn, NetworkingCurrent } from '../types/models';
 import { useAuth } from '../state/auth';
 import { fmtET } from '../lib/tz';
 
@@ -24,6 +24,9 @@ export function EventDetailPage() {
   const [msg, setMsg] = React.useState<string | null>(null);
   const [notFound, setNotFound] = React.useState(false);
 
+  // networking state: undefined = not loaded yet, null = no active round
+  const [networkingGroup, setNetworkingGroup] = React.useState<NetworkingCurrent | null | undefined>(undefined);
+
   const id = params?.id;
 
   React.useEffect(() => {
@@ -39,6 +42,32 @@ export function EventDetailPage() {
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
   }, [id, user?.id]);
+
+  const loadNetworkingGroup = React.useCallback(async () => {
+    if (!id) return;
+    try {
+      const data = await getNetworkingCurrent(id);
+      setNetworkingGroup(data);
+    } catch {
+      setNetworkingGroup(null);
+    }
+  }, [id]);
+
+  // Load group once checked-in + networking is enabled
+  React.useEffect(() => {
+    if (myCheckin && event?.has_networking) loadNetworkingGroup();
+  }, [myCheckin, event?.has_networking, loadNetworkingGroup]);
+
+  // SSE: instantly update when admin runs a new round
+  React.useEffect(() => {
+    if (!myCheckin || !event?.has_networking || !id) return;
+    const token = getToken();
+    if (!token) return;
+    const es = new EventSource(`/api/events/${id}/networking/stream?token=${encodeURIComponent(token)}`);
+    es.onmessage = () => { loadNetworkingGroup(); };
+    es.onerror = () => { es.close(); };
+    return () => { es.close(); };
+  }, [myCheckin, event?.has_networking, id, loadNetworkingGroup]);
 
   const handleCheckIn = async () => {
     if (!id) return;
@@ -107,7 +136,6 @@ export function EventDetailPage() {
         )}
 
         <div className="mt-4 space-y-2.5">
-          {/* Date & time */}
           <div className="flex items-start gap-3">
             <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm">
               📅
@@ -124,7 +152,6 @@ export function EventDetailPage() {
             </div>
           </div>
 
-          {/* Location */}
           {event.location_name && (
             <div className="flex items-start gap-3">
               <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm">
@@ -168,6 +195,39 @@ export function EventDetailPage() {
                     Your name has been entered — good luck!
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* Networking group card */}
+            {event.has_networking && networkingGroup && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3.5">
+                <div className="mb-2 flex items-center gap-2">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-base">
+                    ⚡
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-blue-700">
+                      Round {networkingGroup.round_number} · Group {networkingGroup.group_label}
+                    </div>
+                    <div className="text-xs text-blue-500">Your networking group</div>
+                  </div>
+                </div>
+                <div className="ml-11 space-y-1">
+                  {networkingGroup.members.map((m) => (
+                    <div key={m.user_id} className="text-sm text-blue-800">
+                      {m.full_name ?? '—'}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {event.has_networking && networkingGroup === null && (
+              <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-base">
+                  ⚡
+                </div>
+                <div className="text-sm text-blue-600">Networking rounds haven't started yet</div>
               </div>
             )}
           </div>

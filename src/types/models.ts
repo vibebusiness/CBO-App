@@ -19,9 +19,29 @@ export type Event = {
   location_address: string;
   image_url: string | null;
   has_raffle: boolean;
+  has_networking: boolean;
   status: 'published' | 'draft';
   created_by: string;
   created_at: string;
+};
+
+export type NetworkingRound = {
+  id: string;
+  event_id: string;
+  round_number: number;
+  group_size: number;
+  created_at: string;
+  groups: Array<{
+    label: string;
+    members: Array<{ user_id: string; full_name: string | null; email: string }>;
+  }>;
+};
+
+export type NetworkingCurrent = {
+  round_number: number;
+  group_label: string;
+  group_size: number;
+  members: Array<{ user_id: string; full_name: string | null }>;
 };
 
 export type CheckIn = {

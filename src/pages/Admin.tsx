@@ -5,8 +5,9 @@ import Underline from '@tiptap/extension-underline';
 import {
   getEvents, createEvent, updateEvent, deleteEvent,
   getCheckIns, removeCheckIn, createInviteLink, uploadImage,
+  getNetworkingRounds, runNetworkingRound,
 } from '../lib/api';
-import type { Event, CheckIn } from '../types/models';
+import type { Event, CheckIn, NetworkingRound } from '../types/models';
 import { fmtET, etInputToUtc, utcToEtInput } from '../lib/tz';
 import { RaffleModal } from '../components/RaffleModal';
 
@@ -20,6 +21,7 @@ type EventForm = {
   status: 'draft' | 'published';
   image_url: string;
   has_raffle: boolean;
+  has_networking: boolean;
 };
 
 const EMPTY_FORM: EventForm = {
@@ -32,6 +34,7 @@ const EMPTY_FORM: EventForm = {
   status: 'draft',
   image_url: '',
   has_raffle: false,
+  has_networking: false,
 };
 
 function Input({ label, ...props }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
@@ -261,6 +264,102 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (html: s
   );
 }
 
+function NetworkingModal({ event, onClose }: { event: Event; onClose: () => void }) {
+  const [rounds, setRounds] = React.useState<NetworkingRound[]>([]);
+  const [groupSize, setGroupSize] = React.useState(5);
+  const [loading, setLoading] = React.useState(true);
+  const [running, setRunning] = React.useState(false);
+
+  const load = React.useCallback(async () => {
+    try {
+      const data = await getNetworkingRounds(event.id);
+      setRounds(data);
+      if (data.length > 0) setGroupSize(data[data.length - 1].group_size);
+    } finally {
+      setLoading(false);
+    }
+  }, [event.id]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const handleRun = async () => {
+    setRunning(true);
+    try {
+      await runNetworkingRound(event.id, groupSize);
+      await load();
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-slate-900">{event.title}</h3>
+            <p className="text-xs text-slate-500">Speed Networking</p>
+          </div>
+          <button onClick={onClose} className="text-xl text-slate-400 hover:text-slate-700">✕</button>
+        </div>
+
+        <div className="mb-4 flex items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className="flex-1">
+            <label className="mb-1 block text-xs font-medium text-slate-600">People per group</label>
+            <input
+              type="number"
+              min={2}
+              max={20}
+              value={groupSize}
+              onChange={(e) => setGroupSize(Math.max(2, Math.min(20, parseInt(e.target.value) || 5)))}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400"
+            />
+          </div>
+          <button
+            onClick={handleRun}
+            disabled={running}
+            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+          >
+            {running ? 'Running…' : `Run Round ${rounds.length + 1}`}
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="py-6 text-center text-sm text-slate-400">Loading…</div>
+        ) : rounds.length === 0 ? (
+          <div className="py-6 text-center text-sm text-slate-400">
+            No rounds yet — set a group size and run the first round.
+          </div>
+        ) : (
+          <div className="max-h-96 space-y-3 overflow-y-auto">
+            {[...rounds].reverse().map((round) => (
+              <div key={round.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Round {round.round_number} · {round.groups.length} groups of ~{round.group_size}
+                </div>
+                <div className="space-y-1.5">
+                  {round.groups.map((g) => (
+                    <div key={g.label} className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                      <span className="mt-0.5 shrink-0 rounded-md bg-slate-900 px-1.5 py-0.5 text-xs font-bold text-white">
+                        {g.label}
+                      </span>
+                      <span className="text-xs leading-relaxed text-slate-700">
+                        {g.members.map((m) => m.full_name ?? m.email).join(' · ')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 type RaffleState = Event | null;
 
 export function AdminPage() {
@@ -271,6 +370,7 @@ export function AdminPage() {
   const [saving, setSaving] = React.useState(false);
   const [rosterEvent, setRosterEvent] = React.useState<Event | null>(null);
   const [raffleState, setRaffleState] = React.useState<RaffleState>(null);
+  const [networkingEvent, setNetworkingEvent] = React.useState<Event | null>(null);
   const [inviteLink, setInviteLink] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState<'events' | 'invite'>('events');
 
@@ -290,6 +390,7 @@ export function AdminPage() {
       status: event.status,
       image_url: event.image_url ?? '',
       has_raffle: event.has_raffle ?? false,
+      has_networking: event.has_networking ?? false,
     });
     setEditingId(event.id);
     setShowForm(true);
@@ -309,6 +410,7 @@ export function AdminPage() {
         status: form.status,
         image_url: form.image_url || undefined,
         has_raffle: form.has_raffle,
+        has_networking: form.has_networking,
       };
       if (editingId) {
         await updateEvent(editingId, payload);
@@ -440,6 +542,13 @@ export function AdminPage() {
                 onChange={(v) => setForm((f) => ({ ...f, has_raffle: v }))}
               />
 
+              <Toggle
+                label="Speed Networking"
+                sublabel="Divide checked-in attendees into groups — run multiple rounds"
+                checked={form.has_networking}
+                onChange={(v) => setForm((f) => ({ ...f, has_networking: v }))}
+              />
+
               <div className="flex gap-2">
                 <button
                   onClick={handleSave}
@@ -494,6 +603,11 @@ export function AdminPage() {
                             🎟️ Raffle
                           </span>
                         )}
+                        {event.has_networking && (
+                          <span className="inline-block rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                            ⚡ Networking
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex shrink-0 flex-col gap-1.5">
@@ -512,6 +626,14 @@ export function AdminPage() {
                           className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-100"
                         >
                           🎲 Raffle
+                        </button>
+                      )}
+                      {event.has_networking && (
+                        <button
+                          onClick={() => setNetworkingEvent(event)}
+                          className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                        >
+                          ⚡ Networking
                         </button>
                       )}
                       <button onClick={() => openEdit(event)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">
@@ -561,6 +683,13 @@ export function AdminPage() {
           eventId={raffleState.id}
           eventTitle={raffleState.title}
           onClose={() => setRaffleState(null)}
+        />
+      )}
+
+      {networkingEvent && (
+        <NetworkingModal
+          event={networkingEvent}
+          onClose={() => setNetworkingEvent(null)}
         />
       )}
     </div>
