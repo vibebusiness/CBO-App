@@ -1,14 +1,15 @@
 import React from 'react';
+import { useLocation } from 'wouter';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import {
-  getEvents, createEvent, updateEvent, deleteEvent,
+  getEvents, createEvent, deleteEvent,
   getCheckIns, removeCheckIn, createInviteLink, uploadImage,
   getNetworkingRounds, runNetworkingRound, resetNetworkingRounds,
 } from '../lib/api';
 import type { Event, CheckIn, NetworkingRound } from '../types/models';
-import { fmtET, etInputToUtc, utcToEtInput } from '../lib/tz';
+import { fmtET, etInputToUtc } from '../lib/tz';
 import { RaffleModal } from '../components/RaffleModal';
 
 type EventForm = {
@@ -381,9 +382,9 @@ function NetworkingModal({ event, onClose }: { event: Event; onClose: () => void
 type RaffleState = Event | null;
 
 export function AdminPage() {
+  const [, navigate] = useLocation();
   const [events, setEvents] = React.useState<Event[]>([]);
   const [form, setForm] = React.useState<EventForm>(EMPTY_FORM);
-  const [editingId, setEditingId] = React.useState<string | null>(null);
   const [showForm, setShowForm] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [rosterEvent, setRosterEvent] = React.useState<Event | null>(null);
@@ -395,30 +396,13 @@ export function AdminPage() {
   const load = () => getEvents(true).then(setEvents);
   React.useEffect(() => { load(); }, []);
 
-  const openNew = () => { setForm(EMPTY_FORM); setEditingId(null); setShowForm(true); };
-
-  const openEdit = (event: Event) => {
-    setForm({
-      title: event.title,
-      description: event.description,
-      start_at: utcToEtInput(event.start_at),
-      end_at: event.end_at ? utcToEtInput(event.end_at) : '',
-      location_name: event.location_name ?? '',
-      location_address: event.location_address ?? '',
-      status: event.status,
-      image_url: event.image_url ?? '',
-      has_raffle: event.has_raffle ?? false,
-      has_networking: event.has_networking ?? false,
-    });
-    setEditingId(event.id);
-    setShowForm(true);
-  };
+  const openNew = () => { setForm(EMPTY_FORM); setShowForm(true); };
 
   const handleSave = async () => {
     if (!form.title || !form.start_at) return;
     setSaving(true);
     try {
-      const payload = {
+      await createEvent({
         title: form.title,
         description: form.description,
         start_at: etInputToUtc(form.start_at),
@@ -429,12 +413,7 @@ export function AdminPage() {
         image_url: form.image_url || undefined,
         has_raffle: form.has_raffle,
         has_networking: form.has_networking,
-      };
-      if (editingId) {
-        await updateEvent(editingId, payload);
-      } else {
-        await createEvent(payload);
-      }
+      });
       await load();
       setShowForm(false);
     } catch (e) {
@@ -492,9 +471,7 @@ export function AdminPage() {
 
           {showForm && (
             <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-800">
-                {editingId ? 'Edit event' : 'New event'}
-              </h2>
+              <h2 className="text-sm font-semibold text-slate-800">New event</h2>
 
               <ImageUpload value={form.image_url} onChange={(url) => setForm((f) => ({ ...f, image_url: url }))} />
 
@@ -573,7 +550,7 @@ export function AdminPage() {
                   disabled={saving || !form.title || !form.start_at}
                   className="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
                 >
-                  {saving ? 'Saving…' : editingId ? 'Save changes' : 'Create event'}
+                  {saving ? 'Saving…' : 'Create event'}
                 </button>
                 <button
                   onClick={() => setShowForm(false)}
@@ -654,7 +631,10 @@ export function AdminPage() {
                           ⚡ Networking
                         </button>
                       )}
-                      <button onClick={() => openEdit(event)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">
+                      <button
+                        onClick={() => navigate(`/admin/events/${event.id}/edit`)}
+                        className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                      >
                         Edit
                       </button>
                       <button onClick={() => handleDelete(event.id)} className="rounded-xl border border-red-100 bg-red-50 px-3 py-1.5 text-xs text-red-600 hover:bg-red-100">

@@ -7,6 +7,7 @@ import { EventsPage } from './pages/Events';
 import { EventDetailPage } from './pages/EventDetail';
 import { ProfilePage } from './pages/Profile';
 import { AdminPage } from './pages/Admin';
+import { AdminEventEditPage } from './pages/AdminEventEdit';
 import { DoorCheckPage } from './pages/DoorCheck';
 import { ResetPasswordPage } from './pages/ResetPassword';
 import { useAuth } from './state/auth';
@@ -37,6 +38,9 @@ function AuthedApp() {
         <Route path="/events/:id" component={EventDetailPage} />
         <Route path="/events" component={EventsPage} />
         <Route path="/profile" component={ProfilePage} />
+        <Route path="/admin/events/:id/edit">
+          {user.role === 'admin' ? <AdminEventEditPage /> : <Redirect to="/events" />}
+        </Route>
         <Route path="/admin">
           {user.role === 'admin' ? <AdminPage /> : <Redirect to="/events" />}
         </Route>
