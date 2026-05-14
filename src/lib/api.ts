@@ -24,8 +24,15 @@ function authHeaders(): Record<string, string> {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { ...init, headers: authHeaders() });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? 'Request failed');
+  const text = await res.text();
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    console.error(`[api] non-JSON from ${init?.method ?? 'GET'} ${path} (${res.status}):`, text.slice(0, 300));
+    throw new Error(`Server error (${res.status}) on ${path}`);
+  }
+  if (!res.ok) throw new Error((data as Record<string, string>).error ?? 'Request failed');
   return data as T;
 }
 

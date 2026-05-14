@@ -16,6 +16,12 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 
 app.use(express.json({ limit: '10mb' }));
 
+// Request logger — helps debug routing issues
+app.use((req, _res, next) => {
+  if (req.path.startsWith('/api')) console.log(`[API] ${req.method} ${req.path}`);
+  next();
+});
+
 // Create event_images table on startup so images persist in PostgreSQL across deployments
 pool.query(`
   CREATE TABLE IF NOT EXISTS event_images (
@@ -71,9 +77,21 @@ function broadcastNetworkingUpdate(eventId, payload) {
   if (!clients) return;
   const msg = `data: ${JSON.stringify(payload)}\n\n`;
   for (const client of clients) {
-    try { client.write(msg); } catch { clients.delete(client); }
+    try {
+      client.write(msg);
+    } catch {
+      clients.delete(client);
+    }
   }
 }
+
+// Prevent a stale SSE socket from crashing the whole server
+process.on('uncaughtException', (err) => {
+  console.error('[server] uncaughtException (suppressed):', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[server] unhandledRejection (suppressed):', reason);
+});
 
 // Assign attendees to groups minimising repeat pairings (50-attempt greedy shuffle)
 function buildNetworkingGroups(userIds, groupSize, pastAssignments) {
@@ -573,7 +591,10 @@ app.get('/api/events/:id/networking/stream', (req, res) => {
   res.write('data: {"connected":true}\n\n');
   if (!networkingSseClients.has(eventId)) networkingSseClients.set(eventId, new Set());
   networkingSseClients.get(eventId).add(res);
-  req.on('close', () => { networkingSseClients.get(eventId)?.delete(res); });
+  const cleanup = () => { networkingSseClients.get(eventId)?.delete(res); };
+  req.on('close', cleanup);
+  res.on('error', cleanup);
+  res.socket?.on('error', cleanup);
 });
 
 // Admin: run a new networking round
