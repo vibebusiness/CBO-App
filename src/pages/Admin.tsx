@@ -5,7 +5,7 @@ import Underline from '@tiptap/extension-underline';
 import {
   getEvents, createEvent, updateEvent, deleteEvent,
   getCheckIns, removeCheckIn, createInviteLink, uploadImage,
-  getNetworkingRounds, runNetworkingRound,
+  getNetworkingRounds, runNetworkingRound, resetNetworkingRounds,
 } from '../lib/api';
 import type { Event, CheckIn, NetworkingRound } from '../types/models';
 import { fmtET, etInputToUtc, utcToEtInput } from '../lib/tz';
@@ -294,6 +294,16 @@ function NetworkingModal({ event, onClose }: { event: Event; onClose: () => void
     }
   };
 
+  const handleReset = async () => {
+    if (!confirm('Reset all networking rounds? This will erase all group history and cannot be undone.')) return;
+    try {
+      await resetNetworkingRounds(event.id);
+      setRounds([]);
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
@@ -333,27 +343,35 @@ function NetworkingModal({ event, onClose }: { event: Event; onClose: () => void
             No rounds yet — set a group size and run the first round.
           </div>
         ) : (
-          <div className="max-h-96 space-y-3 overflow-y-auto">
-            {[...rounds].reverse().map((round) => (
-              <div key={round.id} className="rounded-xl border border-slate-200 bg-white p-3">
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Round {round.round_number} · {round.groups.length} groups of ~{round.group_size}
+          <>
+            <div className="max-h-80 space-y-3 overflow-y-auto">
+              {[...rounds].reverse().map((round) => (
+                <div key={round.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Round {round.round_number} · {round.groups.length} groups of ~{round.group_size}
+                  </div>
+                  <div className="space-y-1.5">
+                    {round.groups.map((g) => (
+                      <div key={g.label} className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                        <span className="mt-0.5 shrink-0 rounded-md bg-slate-900 px-1.5 py-0.5 text-xs font-bold text-white">
+                          {g.label}
+                        </span>
+                        <span className="text-xs leading-relaxed text-slate-700">
+                          {g.members.map((m) => m.full_name ?? m.email).join(' · ')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  {round.groups.map((g) => (
-                    <div key={g.label} className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2">
-                      <span className="mt-0.5 shrink-0 rounded-md bg-slate-900 px-1.5 py-0.5 text-xs font-bold text-white">
-                        {g.label}
-                      </span>
-                      <span className="text-xs leading-relaxed text-slate-700">
-                        {g.members.map((m) => m.full_name ?? m.email).join(' · ')}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+            <button
+              onClick={handleReset}
+              className="mt-3 w-full rounded-xl border border-red-200 bg-red-50 py-2 text-sm font-medium text-red-600 hover:bg-red-100"
+            >
+              Reset all rounds
+            </button>
+          </>
         )}
       </div>
     </div>

@@ -159,6 +159,10 @@ export async function getNetworkingCurrent(eventId: string): Promise<NetworkingC
   return request(`/events/${eventId}/networking/current`);
 }
 
+export async function resetNetworkingRounds(eventId: string): Promise<void> {
+  return request(`/events/${eventId}/networking/reset`, { method: 'DELETE' });
+}
+
 // Admin invite
 export async function createInviteLink(): Promise<{ token: string; link: string }> {
   return request('/admin/invite', { method: 'POST' });

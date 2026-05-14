@@ -667,6 +667,26 @@ app.get('/api/events/:id/networking/rounds', authMiddleware, adminOnly, async (r
   }
 });
 
+// Admin: reset all rounds for an event (erase all history)
+app.delete('/api/events/:id/networking/reset', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const roundsRes = await pool.query(
+      'SELECT id FROM networking_rounds WHERE event_id = $1',
+      [req.params.id]
+    );
+    if (roundsRes.rows.length > 0) {
+      const roundIds = roundsRes.rows.map((r) => r.id);
+      await pool.query('DELETE FROM networking_assignments WHERE round_id = ANY($1)', [roundIds]);
+      await pool.query('DELETE FROM networking_rounds WHERE event_id = $1', [req.params.id]);
+    }
+    broadcastNetworkingUpdate(req.params.id, { reset: true });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Member: their group assignment in the latest round
 app.get('/api/events/:id/networking/current', authMiddleware, async (req, res) => {
   try {
