@@ -52,3 +52,17 @@ export type CheckIn = {
   email?: string;
   full_name?: string | null;
 };
+
+export type EventFeedback = {
+  id: string;
+  event_id: string;
+  user_id: string;
+  enjoyment_rating: number;
+  event_size_preference: 'larger' | 'smaller' | null;
+  one_change: string | null;
+  additional_feedback: string | null;
+  created_at: string;
+  full_name?: string | null;
+  email?: string;
+  business_name?: string | null;
+};

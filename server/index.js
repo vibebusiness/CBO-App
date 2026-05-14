@@ -57,6 +57,21 @@ pool.query(`
   )
 `).catch((e) => console.error('networking_assignments table init failed:', e));
 
+// Create event_feedback table
+pool.query(`
+  CREATE TABLE IF NOT EXISTS event_feedback (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    enjoyment_rating int NOT NULL,
+    event_size_preference varchar(10),
+    one_change text,
+    additional_feedback text,
+    created_at timestamptz DEFAULT now(),
+    UNIQUE(event_id, user_id)
+  )
+`).catch((e) => console.error('event_feedback table init failed:', e));
+
 // Create password_resets table for forgot-password flow
 pool.query(`
   CREATE TABLE IF NOT EXISTS password_resets (
@@ -741,6 +756,63 @@ app.get('/api/events/:id/networking/current', authMiddleware, async (req, res) =
         .filter((m) => m.user_id !== req.user.id)
         .map((m) => ({ user_id: m.user_id, full_name: m.full_name })),
     });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── Event Feedback ────────────────────────────────────────────────────────
+
+app.get('/api/events/:id/my-feedback', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM event_feedback WHERE event_id = $1 AND user_id = $2',
+      [req.params.id, req.user.id]
+    );
+    res.json(result.rows[0] ?? null);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/events/:id/feedback', authMiddleware, async (req, res) => {
+  const { enjoyment_rating, event_size_preference, one_change, additional_feedback } = req.body;
+  const rating = parseInt(enjoyment_rating, 10);
+  if (!rating || rating < 1 || rating > 10) {
+    return res.status(400).json({ error: 'Rating must be between 1 and 10' });
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO event_feedback (event_id, user_id, enjoyment_rating, event_size_preference, one_change, additional_feedback)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (event_id, user_id) DO UPDATE SET
+         enjoyment_rating = EXCLUDED.enjoyment_rating,
+         event_size_preference = EXCLUDED.event_size_preference,
+         one_change = EXCLUDED.one_change,
+         additional_feedback = EXCLUDED.additional_feedback
+       RETURNING *`,
+      [req.params.id, req.user.id, rating, event_size_preference || null, one_change || null, additional_feedback || null]
+    );
+    res.json(result.rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/api/events/:id/feedback', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT ef.*, u.full_name, u.email, u.business_name
+       FROM event_feedback ef
+       JOIN users u ON ef.user_id = u.id
+       WHERE ef.event_id = $1
+       ORDER BY ef.created_at DESC`,
+      [req.params.id]
+    );
+    res.json(result.rows);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Server error' });

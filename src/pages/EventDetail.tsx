@@ -1,8 +1,8 @@
 import React from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { isAfter, subHours, addHours } from 'date-fns';
-import { getEvent, getCheckIns, checkIn, getNetworkingCurrent, getToken } from '../lib/api';
-import type { Event, CheckIn, NetworkingCurrent } from '../types/models';
+import { getEvent, getCheckIns, checkIn, getNetworkingCurrent, getToken, getMyFeedback, submitFeedback } from '../lib/api';
+import type { Event, CheckIn, NetworkingCurrent, EventFeedback } from '../types/models';
 import { useAuth } from '../state/auth';
 import { fmtET } from '../lib/tz';
 
@@ -10,6 +10,147 @@ function isCheckInOpen(event: Event): boolean {
   const now = new Date();
   const start = new Date(event.start_at);
   return now >= subHours(start, 2) && now <= addHours(start, 6);
+}
+
+function FeedbackCard({ eventId }: { eventId: string }) {
+  const [existing, setExisting] = React.useState<EventFeedback | null | undefined>(undefined);
+  const [rating, setRating] = React.useState<number | null>(null);
+  const [sizePreference, setSizePreference] = React.useState<'larger' | 'smaller' | null>(null);
+  const [oneChange, setOneChange] = React.useState('');
+  const [additionalFeedback, setAdditionalFeedback] = React.useState('');
+  const [submitting, setSubmitting] = React.useState(false);
+  const [submitted, setSubmitted] = React.useState(false);
+
+  React.useEffect(() => {
+    getMyFeedback(eventId)
+      .then(setExisting)
+      .catch(() => setExisting(null));
+  }, [eventId]);
+
+  const handleSubmit = async () => {
+    if (!rating) return;
+    setSubmitting(true);
+    try {
+      await submitFeedback(eventId, {
+        enjoyment_rating: rating,
+        event_size_preference: sizePreference,
+        one_change: oneChange,
+        additional_feedback: additionalFeedback,
+      });
+      setSubmitted(true);
+    } catch {
+      // silent
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (existing === undefined) return null;
+
+  if (existing || submitted) {
+    return (
+      <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center gap-3 rounded-xl border border-purple-200 bg-purple-50 px-4 py-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-purple-100 text-lg">
+            💜
+          </div>
+          <div>
+            <div className="font-medium text-purple-700">Thanks for your feedback!</div>
+            <div className="text-xs text-purple-500/80">We appreciate you sharing your thoughts.</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="mb-1 text-sm font-semibold text-slate-900">Share your feedback</h2>
+      <p className="mb-4 text-xs text-slate-500">Help us make future events even better.</p>
+
+      {/* Q1: Enjoyment rating */}
+      <div className="mb-5">
+        <p className="mb-2.5 text-sm font-medium text-slate-700">
+          On a scale of 1–10, how much did you enjoy this event?
+        </p>
+        <div className="flex gap-1.5">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+            <button
+              key={n}
+              onClick={() => setRating(n)}
+              className={[
+                'flex h-9 flex-1 items-center justify-center rounded-lg text-sm font-semibold transition',
+                rating === n
+                  ? 'bg-slate-900 text-white'
+                  : 'border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100',
+              ].join(' ')}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Q2: Event size preference */}
+      <div className="mb-5">
+        <p className="mb-2.5 text-sm font-medium text-slate-700">
+          Do you prefer larger events or these smaller events?
+        </p>
+        <div className="flex gap-2">
+          {(['larger', 'smaller'] as const).map((opt) => (
+            <button
+              key={opt}
+              onClick={() => setSizePreference(opt)}
+              className={[
+                'flex-1 rounded-xl border py-2.5 text-sm font-medium transition',
+                sizePreference === opt
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100',
+              ].join(' ')}
+            >
+              {opt === 'larger' ? 'Larger events' : 'Smaller events like these'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Q3: One change */}
+      <div className="mb-4">
+        <label className="mb-1.5 block text-sm font-medium text-slate-700">
+          What's one thing you'd change? <span className="font-normal text-slate-400">(optional)</span>
+        </label>
+        <textarea
+          rows={2}
+          value={oneChange}
+          onChange={(e) => setOneChange(e.target.value)}
+          placeholder="e.g. More networking time, different venue…"
+          className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-slate-400 focus:bg-white"
+        />
+      </div>
+
+      {/* Q4: Additional feedback */}
+      <div className="mb-5">
+        <label className="mb-1.5 block text-sm font-medium text-slate-700">
+          Any additional feedback? <span className="font-normal text-slate-400">(optional)</span>
+        </label>
+        <textarea
+          rows={2}
+          value={additionalFeedback}
+          onChange={(e) => setAdditionalFeedback(e.target.value)}
+          placeholder="Anything else you'd like us to know…"
+          className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-slate-400 focus:bg-white"
+        />
+      </div>
+
+      <button
+        onClick={handleSubmit}
+        disabled={!rating || submitting}
+        className="w-full rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 active:scale-95 disabled:opacity-40"
+      >
+        {submitting ? 'Submitting…' : 'Submit feedback'}
+      </button>
+    </div>
+  );
 }
 
 export function EventDetailPage() {
@@ -253,6 +394,9 @@ export function EventDetailPage() {
           <p className="mt-2 text-center text-xs text-slate-500">{msg}</p>
         )}
       </div>
+
+      {/* Feedback form — shown only when checked in */}
+      {myCheckin && id && <FeedbackCard eventId={id} />}
 
       {/* Description */}
       {event.description && (

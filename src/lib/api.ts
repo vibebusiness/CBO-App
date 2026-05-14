@@ -1,4 +1,4 @@
-import type { Event, CheckIn, NetworkingRound, NetworkingCurrent } from '../types/models';
+import type { Event, CheckIn, NetworkingRound, NetworkingCurrent, EventFeedback } from '../types/models';
 
 const BASE = '/api';
 
@@ -168,6 +168,24 @@ export async function getNetworkingCurrent(eventId: string): Promise<NetworkingC
 
 export async function resetNetworkingRounds(eventId: string): Promise<void> {
   return request(`/events/${eventId}/networking/reset`, { method: 'DELETE' });
+}
+
+// Feedback
+export async function getMyFeedback(eventId: string): Promise<EventFeedback | null> {
+  return request(`/events/${eventId}/my-feedback`);
+}
+
+export async function submitFeedback(eventId: string, data: {
+  enjoyment_rating: number;
+  event_size_preference: 'larger' | 'smaller' | null;
+  one_change: string;
+  additional_feedback: string;
+}): Promise<EventFeedback> {
+  return request(`/events/${eventId}/feedback`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function getEventFeedback(eventId: string): Promise<EventFeedback[]> {
+  return request(`/events/${eventId}/feedback`);
 }
 
 // Admin invite

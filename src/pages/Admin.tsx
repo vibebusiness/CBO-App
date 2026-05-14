@@ -7,8 +7,9 @@ import {
   getEvents, createEvent, deleteEvent,
   getCheckIns, removeCheckIn, createInviteLink, uploadImage,
   getNetworkingRounds, runNetworkingRound, resetNetworkingRounds,
+  getEventFeedback,
 } from '../lib/api';
-import type { Event, CheckIn, NetworkingRound } from '../types/models';
+import type { Event, CheckIn, NetworkingRound, EventFeedback } from '../types/models';
 import { fmtET, etInputToUtc } from '../lib/tz';
 import { RaffleModal } from '../components/RaffleModal';
 
@@ -379,6 +380,104 @@ function NetworkingModal({ event, onClose }: { event: Event; onClose: () => void
   );
 }
 
+function FeedbackModal({ event, onClose }: { event: Event; onClose: () => void }) {
+  const [rows, setRows] = React.useState<EventFeedback[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    getEventFeedback(event.id)
+      .then(setRows)
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  }, [event.id]);
+
+  const avgRating = rows.length
+    ? (rows.reduce((s, r) => s + r.enjoyment_rating, 0) / rows.length).toFixed(1)
+    : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <div>
+            <h3 className="font-semibold text-slate-900">{event.title}</h3>
+            <p className="text-xs text-slate-500">Attendee Feedback</p>
+          </div>
+          <button onClick={onClose} className="text-xl text-slate-400 hover:text-slate-700">✕</button>
+        </div>
+
+        {loading ? (
+          <div className="py-10 text-center text-sm text-slate-400">Loading…</div>
+        ) : rows.length === 0 ? (
+          <div className="py-10 text-center text-sm text-slate-400">No feedback submitted yet.</div>
+        ) : (
+          <>
+            <div className="flex gap-4 border-b border-slate-100 px-5 py-3">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-slate-900">{rows.length}</div>
+                <div className="text-xs text-slate-400">responses</div>
+              </div>
+              {avgRating && (
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-slate-900">{avgRating}<span className="text-sm font-normal text-slate-400">/10</span></div>
+                  <div className="text-xs text-slate-400">avg rating</div>
+                </div>
+              )}
+              <div className="text-center">
+                <div className="text-2xl font-bold text-slate-900">
+                  {rows.filter((r) => r.event_size_preference === 'smaller').length}
+                </div>
+                <div className="text-xs text-slate-400">prefer smaller</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-slate-900">
+                  {rows.filter((r) => r.event_size_preference === 'larger').length}
+                </div>
+                <div className="text-xs text-slate-400">prefer larger</div>
+              </div>
+            </div>
+
+            <div className="max-h-96 divide-y divide-slate-100 overflow-y-auto">
+              {rows.map((r) => (
+                <div key={r.id} className="px-5 py-4">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-medium text-slate-900">{r.full_name ?? r.email}</div>
+                      {r.business_name && (
+                        <div className="text-xs text-slate-400">{r.business_name}</div>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="rounded-lg bg-slate-900 px-2.5 py-1 text-sm font-bold text-white">
+                        {r.enjoyment_rating}/10
+                      </span>
+                      {r.event_size_preference && (
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600">
+                          {r.event_size_preference === 'smaller' ? 'Smaller' : 'Larger'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {r.one_change && (
+                    <div className="mb-1 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                      <span className="font-medium text-slate-500">Change: </span>{r.one_change}
+                    </div>
+                  )}
+                  {r.additional_feedback && (
+                    <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                      <span className="font-medium text-slate-500">Notes: </span>{r.additional_feedback}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 type RaffleState = Event | null;
 
 export function AdminPage() {
@@ -390,6 +489,7 @@ export function AdminPage() {
   const [rosterEvent, setRosterEvent] = React.useState<Event | null>(null);
   const [raffleState, setRaffleState] = React.useState<RaffleState>(null);
   const [networkingEvent, setNetworkingEvent] = React.useState<Event | null>(null);
+  const [feedbackEvent, setFeedbackEvent] = React.useState<Event | null>(null);
   const [inviteLink, setInviteLink] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState<'events' | 'invite'>('events');
 
@@ -632,6 +732,12 @@ export function AdminPage() {
                         </button>
                       )}
                       <button
+                        onClick={() => setFeedbackEvent(event)}
+                        className="rounded-xl border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100"
+                      >
+                        📋 Feedback
+                      </button>
+                      <button
                         onClick={() => navigate(`/admin/events/${event.id}/edit`)}
                         className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
                       >
@@ -688,6 +794,13 @@ export function AdminPage() {
         <NetworkingModal
           event={networkingEvent}
           onClose={() => setNetworkingEvent(null)}
+        />
+      )}
+
+      {feedbackEvent && (
+        <FeedbackModal
+          event={feedbackEvent}
+          onClose={() => setFeedbackEvent(null)}
         />
       )}
     </div>
