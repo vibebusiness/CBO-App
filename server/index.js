@@ -965,7 +965,11 @@ app.post('/api/events/:id/ai-match', authMiddleware, async (req, res) => {
        WHERE c.event_id = $1 AND c.user_id != $2`,
       [req.params.id, me.id]
     );
-    const attendees = attendeesRes.rows;
+    // Shuffle so repeated taps return different picks
+    const attendees = attendeesRes.rows
+      .map(a => ({ a, sort: Math.random() }))
+      .sort((x, y) => x.sort - y.sort)
+      .map(({ a }) => a);
 
     if (attendees.length === 0) {
       return res.status(400).json({ error: 'No other attendees to match with yet' });
@@ -975,13 +979,13 @@ app.post('/api/events/:id/ai-match', authMiddleware, async (req, res) => {
       `[${i + 1}] Name: ${a.full_name || 'Unknown'} | Business: ${a.business_name || 'N/A'} | Industry: ${a.industry || 'N/A'} | What they do: ${a.tagline || 'N/A'}`
     ).join('\n');
 
-    const systemPrompt = `You are a strategic networking assistant for a business owners networking group called Charlotte Business Owners (CBO). Your job is to review a member's profile and the numbered list of other attendees at their event, then identify the single best strategic partner for them and craft a warm, natural ice-breaking opening line.
+    const systemPrompt = `You are a strategic networking assistant for a business owners networking group called Charlotte Business Owners (CBO). Your job is to review a member's profile and the numbered list of other attendees at their event, then identify a great strategic partner for them and craft a warm, slightly funny ice-breaking opening line.
 
 Rules:
-- Pick exactly ONE person who would be the most valuable strategic partner (referral source, complementary service, potential collaboration, or client relationship).
+- Pick exactly ONE person who would be a valuable strategic partner (referral source, complementary service, potential collaboration, or client relationship). Vary your choice — don't always pick the most "obvious" match.
 - Return their list number as "matchIndex" — this MUST be a number between 1 and ${attendees.length} (inclusive). Do NOT return a number outside that range.
-- Give a brief, specific reason (1-2 sentences) explaining WHY they are the best match.
-- Write a single ice-breaking opening line (1 sentence) the user can say OUT LOUD to go meet this person. Make it warm, conversational, and specific to what this person does — not generic. It should feel like something a real person would say, not a sales pitch.
+- Give a brief, specific reason (1-2 sentences) explaining WHY they are a good match.
+- Write a single ice-breaking opening line the user can say OUT LOUD to go meet this person. Make it warm, conversational, and slightly funny — a light joke or playful observation that relates to what this person does. It should make them smile, not groan. No cheesy puns. No sales pitch. Just something a real, personable human would actually say.
 - Respond ONLY with valid JSON: {"matchIndex": <integer 1 to ${attendees.length}>, "reason": "<string>", "icebreaker": "<string>"}`;
 
     const userPrompt = `MY PROFILE:
