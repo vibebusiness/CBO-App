@@ -42,6 +42,7 @@ export type AppUser = {
   role: 'admin' | 'member';
   full_name: string | null;
   business_name: string | null;
+  tagline: string | null;
   industry: string | null;
   phone: string | null;
   created_at: string;
@@ -76,6 +77,7 @@ export async function getMe(): Promise<AppUser | null> {
 export async function updateProfile(data: {
   full_name: string;
   business_name?: string;
+  tagline?: string;
   industry?: string;
   phone?: string;
 }): Promise<AppUser> {
@@ -171,7 +173,7 @@ export async function resetNetworkingRounds(eventId: string): Promise<void> {
 }
 
 // Attendees directory
-export async function getEventAttendees(eventId: string): Promise<{ full_name: string | null; industry: string | null }[]> {
+export async function getEventAttendees(eventId: string): Promise<{ full_name: string | null; industry: string | null; business_name: string | null; tagline: string | null }[]> {
   return request(`/events/${eventId}/attendees`);
 }
 

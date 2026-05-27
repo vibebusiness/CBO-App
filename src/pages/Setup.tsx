@@ -9,6 +9,7 @@ import { INDUSTRIES } from './Profile';
 const schema = z.object({
   full_name: z.string().min(1, 'Your name is required'),
   business_name: z.string().optional(),
+  tagline: z.string().max(120).optional(),
   industry: z.string().optional(),
   phone: z.string().optional(),
 });
@@ -52,6 +53,7 @@ export function SetupPage() {
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
   const industryValue = watch('industry') ?? '';
+  const taglineValue = watch('tagline') ?? '';
   const selectValue = customMode ? '__custom__' : industryValue;
 
   const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -70,6 +72,7 @@ export function SetupPage() {
       await updateProfile({
         full_name: values.full_name,
         business_name: values.business_name || undefined,
+        tagline: values.tagline || undefined,
         industry: values.industry || undefined,
         phone: values.phone || undefined,
       });
@@ -81,7 +84,6 @@ export function SetupPage() {
 
   return (
     <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-slate-900">
-      {/* Charlotte skyline */}
       <img
         src="/charlotte-skyline.png"
         alt=""
@@ -91,16 +93,12 @@ export function SetupPage() {
       />
       <div className="absolute inset-0 bg-black/40" />
 
-      {/* Card */}
       <div className="relative z-10 mx-4 w-full max-w-sm rounded-2xl bg-white px-8 py-10 shadow-2xl">
-        {/* Logo */}
         <div className="mb-6 flex flex-col items-center gap-3">
           <img src="/cbo-logo.png" alt="Charlotte Business Owners" className="h-14 w-auto" />
           <div className="text-center">
             <h1 className="text-lg font-semibold text-slate-800">Welcome to CBO!</h1>
-            <p className="mt-1 text-xs text-slate-500">
-              Set up your profile to get started.
-            </p>
+            <p className="mt-1 text-xs text-slate-500">Set up your profile to get started.</p>
           </div>
         </div>
 
@@ -117,7 +115,7 @@ export function SetupPage() {
             )}
           </Field>
 
-          <Field label="Business name" hint="Optional — shown on your profile">
+          <Field label="Business name" hint="Optional">
             <input
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               placeholder="Your company or brand name"
@@ -125,6 +123,22 @@ export function SetupPage() {
               {...register('business_name')}
             />
           </Field>
+
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="text-xs font-medium text-slate-600">What do you do?</label>
+              <span className={['text-xs', taglineValue.length > 100 ? 'text-orange-500' : 'text-slate-400'].join(' ')}>
+                {taglineValue.length}/120
+              </span>
+            </div>
+            <input
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+              placeholder="e.g. I help small businesses build their online presence"
+              maxLength={120}
+              {...register('tagline')}
+            />
+            <p className="mt-1 text-xs text-slate-400">One line shown to other members at events</p>
+          </div>
 
           <Field label="Industry" hint="Optional — helps members connect">
             <div className="space-y-2">

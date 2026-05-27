@@ -57,6 +57,10 @@ pool.query(`
   )
 `).catch((e) => console.error('networking_assignments table init failed:', e));
 
+// Add tagline column to users
+pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS tagline varchar(120)`)
+  .catch((e) => console.error('tagline column init failed:', e));
+
 // Create event_feedback table
 pool.query(`
   CREATE TABLE IF NOT EXISTS event_feedback (
@@ -321,7 +325,7 @@ app.post('/api/auth/signup', async (req, res) => {
       if (tkRes.rows[0]) { role = 'admin'; tokenRow = tkRes.rows[0]; }
     }
     const result = await pool.query(
-      'INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id, email, role, full_name, business_name, industry, phone, created_at',
+      'INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id, email, role, full_name, business_name, tagline, industry, phone, created_at',
       [email.toLowerCase().trim(), hash, role]
     );
     const user = result.rows[0];
@@ -341,7 +345,7 @@ app.post('/api/auth/signin', async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
   try {
     const result = await pool.query(
-      'SELECT id, email, role, full_name, business_name, industry, phone, created_at, password_hash FROM users WHERE email = $1',
+      'SELECT id, email, role, full_name, business_name, tagline, industry, phone, created_at, password_hash FROM users WHERE email = $1',
       [email.toLowerCase().trim()]
     );
     const user = result.rows[0];
@@ -359,7 +363,7 @@ app.post('/api/auth/signin', async (req, res) => {
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, email, role, full_name, business_name, industry, phone, created_at FROM users WHERE id = $1',
+      'SELECT id, email, role, full_name, business_name, tagline, industry, phone, created_at FROM users WHERE id = $1',
       [req.user.id]
     );
     if (!result.rows[0]) return res.status(404).json({ error: 'User not found' });
@@ -459,14 +463,14 @@ app.post('/api/auth/reset-password', async (req, res) => {
 // ── Profile ───────────────────────────────────────────────────────────────
 
 app.patch('/api/profile', authMiddleware, async (req, res) => {
-  const { full_name, business_name, industry, phone } = req.body || {};
+  const { full_name, business_name, tagline, industry, phone } = req.body || {};
   if (!full_name?.trim()) return res.status(400).json({ error: 'Name is required' });
   try {
     const result = await pool.query(
-      `UPDATE users SET full_name = $1, business_name = $2, industry = $3, phone = $4
-       WHERE id = $5
-       RETURNING id, email, role, full_name, business_name, industry, phone, created_at`,
-      [full_name.trim(), business_name ?? null, industry ?? null, phone ?? null, req.user.id]
+      `UPDATE users SET full_name = $1, business_name = $2, tagline = $3, industry = $4, phone = $5
+       WHERE id = $6
+       RETURNING id, email, role, full_name, business_name, tagline, industry, phone, created_at`,
+      [full_name.trim(), business_name ?? null, tagline ? tagline.slice(0, 120) : null, industry ?? null, phone ?? null, req.user.id]
     );
     res.json(result.rows[0]);
   } catch (e) {
@@ -767,7 +771,7 @@ app.get('/api/events/:id/networking/current', authMiddleware, async (req, res) =
 app.get('/api/events/:id/attendees', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT u.full_name, u.industry
+      `SELECT u.full_name, u.industry, u.business_name, u.tagline
        FROM checkins c
        JOIN users u ON c.user_id = u.id
        WHERE c.event_id = $1

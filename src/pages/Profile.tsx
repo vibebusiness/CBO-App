@@ -8,6 +8,7 @@ import { useAuth } from '../state/auth';
 const schema = z.object({
   full_name: z.string().min(1, 'Name is required'),
   business_name: z.string().optional(),
+  tagline: z.string().max(120).optional(),
   industry: z.string().optional(),
   phone: z.string().optional(),
 });
@@ -52,12 +53,14 @@ export function ProfilePage() {
     defaultValues: {
       full_name: user?.full_name ?? '',
       business_name: user?.business_name ?? '',
+      tagline: user?.tagline ?? '',
       industry: initialIndustry,
       phone: user?.phone ?? '',
     },
   });
 
   const industryValue = watch('industry') ?? '';
+  const taglineValue = watch('tagline') ?? '';
   const selectValue = customMode ? '__custom__' : industryValue;
 
   const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -77,6 +80,7 @@ export function ProfilePage() {
       await updateProfile({
         full_name: values.full_name,
         business_name: values.business_name || undefined,
+        tagline: values.tagline || undefined,
         industry: values.industry || undefined,
         phone: values.phone || undefined,
       });
@@ -133,6 +137,22 @@ export function ProfilePage() {
               placeholder="Your company or brand"
               {...register('business_name')}
             />
+          </div>
+
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="text-xs font-medium text-slate-600">What do you do?</label>
+              <span className={['text-xs', taglineValue.length > 100 ? 'text-orange-500' : 'text-slate-400'].join(' ')}>
+                {taglineValue.length}/120
+              </span>
+            </div>
+            <input
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+              placeholder="e.g. I help small businesses build their online presence"
+              maxLength={120}
+              {...register('tagline')}
+            />
+            <p className="mt-1 text-xs text-slate-400">One line shown to other members at events</p>
           </div>
 
           <div className="space-y-2">
