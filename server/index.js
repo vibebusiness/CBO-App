@@ -975,13 +975,14 @@ app.post('/api/events/:id/ai-match', authMiddleware, async (req, res) => {
       `[${i + 1}] Name: ${a.full_name || 'Unknown'} | Business: ${a.business_name || 'N/A'} | Industry: ${a.industry || 'N/A'} | What they do: ${a.tagline || 'N/A'}`
     ).join('\n');
 
-    const systemPrompt = `You are a strategic networking assistant for a business owners networking group called Charlotte Business Owners (CBO). Your job is to review a member's profile and the list of other attendees at their event, then identify the single best strategic partner for them and craft a warm, natural ice-breaking opening line.
+    const systemPrompt = `You are a strategic networking assistant for a business owners networking group called Charlotte Business Owners (CBO). Your job is to review a member's profile and the numbered list of other attendees at their event, then identify the single best strategic partner for them and craft a warm, natural ice-breaking opening line.
 
 Rules:
 - Pick exactly ONE person who would be the most valuable strategic partner (referral source, complementary service, potential collaboration, or client relationship).
+- Return their list number as "matchIndex" — this MUST be a number between 1 and ${attendees.length} (inclusive). Do NOT return a number outside that range.
 - Give a brief, specific reason (1-2 sentences) explaining WHY they are the best match.
 - Write a single ice-breaking opening line (1 sentence) the user can say OUT LOUD to go meet this person. Make it warm, conversational, and specific to what this person does — not generic. It should feel like something a real person would say, not a sales pitch.
-- Respond ONLY with valid JSON matching this exact schema: {"matchIndex": <number 1-based>, "reason": "<string>", "icebreaker": "<string>"}`;
+- Respond ONLY with valid JSON: {"matchIndex": <integer 1 to ${attendees.length}>, "reason": "<string>", "icebreaker": "<string>"}`;
 
     const userPrompt = `MY PROFILE:
 Name: ${myProfile.full_name || 'Unknown'}
@@ -993,21 +994,25 @@ OTHER ATTENDEES:
 ${attendeeList}`;
 
     const completion = await getOpenAI().chat.completions.create({
-      model: 'gpt-5-mini',
+      model: 'gpt-5.4',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      response_format: { type: 'json_object' },
       max_completion_tokens: 512,
     });
 
-    const raw = completion.choices[0].message.content;
-    const parsed = JSON.parse(raw);
-    const idx = parsed.matchIndex - 1;
-    if (idx < 0 || idx >= attendees.length) {
-      return res.status(500).json({ error: 'AI returned invalid match index' });
-    }
+    const raw = completion.choices[0]?.message?.content ?? '';
+    console.log('[AI match] raw response:', raw.slice(0, 300));
+
+    // Extract JSON — handle plain JSON or ```json ... ``` fenced blocks
+    const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || raw.match(/(\{[\s\S]*\})/);
+    const jsonStr = jsonMatch ? jsonMatch[1].trim() : raw.trim();
+    if (!jsonStr) return res.status(500).json({ error: 'AI returned an empty response — try again' });
+
+    const parsed = JSON.parse(jsonStr);
+    let idx = (parseInt(parsed.matchIndex, 10) || 1) - 1;
+    if (idx < 0 || idx >= attendees.length) idx = 0; // clamp to first attendee rather than error
 
     const match = attendees[idx];
     res.json({
