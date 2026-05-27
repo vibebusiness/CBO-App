@@ -5,6 +5,7 @@ import { SetupPage } from './pages/Setup';
 import { CalendarPage } from './pages/Calendar';
 import { EventsPage } from './pages/Events';
 import { EventDetailPage } from './pages/EventDetail';
+import { EventAttendeesPage } from './pages/EventAttendees';
 import { ProfilePage } from './pages/Profile';
 import { AdminPage } from './pages/Admin';
 import { AdminEventEditPage } from './pages/AdminEventEdit';
@@ -35,6 +36,7 @@ function AuthedApp() {
     <AuthedLayout>
       <Switch>
         <Route path="/calendar" component={CalendarPage} />
+        <Route path="/events/:id/attendees" component={EventAttendeesPage} />
         <Route path="/events/:id" component={EventDetailPage} />
         <Route path="/events" component={EventsPage} />
         <Route path="/profile" component={ProfilePage} />

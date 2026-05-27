@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { updateProfile } from '../lib/api';
 import { useAuth } from '../state/auth';
+import { INDUSTRIES } from './Profile';
 
 const schema = z.object({
   full_name: z.string().min(1, 'Your name is required'),
@@ -37,31 +38,31 @@ function Field({
   );
 }
 
-const INDUSTRIES = [
-  'Consulting',
-  'Finance & Accounting',
-  'Health & Wellness',
-  'Legal',
-  'Marketing & PR',
-  'Real Estate',
-  'Retail',
-  'Technology',
-  'Food & Beverage',
-  'Construction & Trades',
-  'Education',
-  'Non-profit',
-  'Other',
-];
-
 export function SetupPage() {
   const { refresh } = useAuth();
   const [error, setError] = React.useState<string | null>(null);
+  const [customMode, setCustomMode] = React.useState(false);
 
   const {
     register,
     handleSubmit,
+    watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
+
+  const industryValue = watch('industry') ?? '';
+  const selectValue = customMode ? '__custom__' : industryValue;
+
+  const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (e.target.value === '__custom__') {
+      setCustomMode(true);
+      setValue('industry', '', { shouldDirty: true });
+    } else {
+      setCustomMode(false);
+      setValue('industry', e.target.value, { shouldDirty: true });
+    }
+  };
 
   const onSubmit = async (values: FormValues) => {
     setError(null);
@@ -126,20 +127,29 @@ export function SetupPage() {
           </Field>
 
           <Field label="Industry" hint="Optional — helps members connect">
-            <select
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-              {...register('industry')}
-              defaultValue=""
-            >
-              <option value="" disabled className="text-slate-400">
-                Select your industry
-              </option>
-              {INDUSTRIES.map((i) => (
-                <option key={i} value={i}>
-                  {i}
-                </option>
-              ))}
-            </select>
+            <div className="space-y-2">
+              <select
+                value={selectValue}
+                onChange={handleSelectChange}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+              >
+                <option value="" disabled>Select your industry</option>
+                {INDUSTRIES.map((i) => (
+                  <option key={i} value={i}>{i}</option>
+                ))}
+                <option value="__custom__">Other — type your own</option>
+              </select>
+              {customMode && (
+                <input
+                  type="text"
+                  value={industryValue}
+                  onChange={(e) => setValue('industry', e.target.value, { shouldDirty: true })}
+                  placeholder="e.g. Podcast Production, Interior Design…"
+                  autoFocus
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                />
+              )}
+            </div>
           </Field>
 
           <Field label="Phone number" hint="Optional — not shared publicly">

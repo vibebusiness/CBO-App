@@ -170,6 +170,11 @@ export async function resetNetworkingRounds(eventId: string): Promise<void> {
   return request(`/events/${eventId}/networking/reset`, { method: 'DELETE' });
 }
 
+// Attendees directory
+export async function getEventAttendees(eventId: string): Promise<{ full_name: string | null; industry: string | null }[]> {
+  return request(`/events/${eventId}/attendees`);
+}
+
 // Feedback
 export async function getMyFeedback(eventId: string): Promise<EventFeedback | null> {
   return request(`/events/${eventId}/my-feedback`);

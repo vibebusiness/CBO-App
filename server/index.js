@@ -762,6 +762,25 @@ app.get('/api/events/:id/networking/current', authMiddleware, async (req, res) =
   }
 });
 
+// ── Attendee Directory ────────────────────────────────────────────────────
+
+app.get('/api/events/:id/attendees', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT u.full_name, u.industry
+       FROM checkins c
+       JOIN users u ON c.user_id = u.id
+       WHERE c.event_id = $1
+       ORDER BY u.full_name ASC`,
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // ── Event Feedback ────────────────────────────────────────────────────────
 
 app.get('/api/events/:id/my-feedback', authMiddleware, async (req, res) => {

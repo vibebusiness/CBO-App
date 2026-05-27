@@ -1,5 +1,5 @@
 import React from 'react';
-import { useRoute, useLocation } from 'wouter';
+import { useRoute, useLocation, Link } from 'wouter';
 import { isAfter, subHours, addHours } from 'date-fns';
 import { getEvent, getCheckIns, checkIn, getNetworkingCurrent, getToken, getMyFeedback, submitFeedback } from '../lib/api';
 import type { Event, CheckIn, NetworkingCurrent, EventFeedback } from '../types/models';
@@ -394,6 +394,25 @@ export function EventDetailPage() {
           <p className="mt-2 text-center text-xs text-slate-500">{msg}</p>
         )}
       </div>
+
+      {/* Who's Here */}
+      {id && (
+        <Link
+          href={`/events/${id}/attendees`}
+          className="mb-4 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm transition hover:bg-slate-50 active:scale-[0.99]"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-base">
+              👥
+            </div>
+            <div>
+              <div className="text-sm font-semibold text-slate-800">Who's Here</div>
+              <div className="text-xs text-slate-400">Browse attendees by industry</div>
+            </div>
+          </div>
+          <span className="text-slate-300">→</span>
+        </Link>
+      )}
 
       {/* Feedback form — shown only when checked in */}
       {myCheckin && id && <FeedbackCard eventId={id} />}

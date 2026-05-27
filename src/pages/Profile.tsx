@@ -14,7 +14,7 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-const INDUSTRIES = [
+export const INDUSTRIES = [
   'Consulting',
   'Finance & Accounting',
   'Health & Wellness',
@@ -27,27 +27,48 @@ const INDUSTRIES = [
   'Construction & Trades',
   'Education',
   'Non-profit',
-  'Other',
 ];
+
+function isCustomIndustry(val: string) {
+  return val !== '' && !INDUSTRIES.includes(val);
+}
 
 export function ProfilePage() {
   const { user, refresh } = useAuth();
   const [saved, setSaved] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  const initialIndustry = user?.industry ?? '';
+  const [customMode, setCustomMode] = React.useState(() => isCustomIndustry(initialIndustry));
+
   const {
     register,
     handleSubmit,
+    watch,
+    setValue,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       full_name: user?.full_name ?? '',
       business_name: user?.business_name ?? '',
-      industry: user?.industry ?? '',
+      industry: initialIndustry,
       phone: user?.phone ?? '',
     },
   });
+
+  const industryValue = watch('industry') ?? '';
+  const selectValue = customMode ? '__custom__' : industryValue;
+
+  const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (e.target.value === '__custom__') {
+      setCustomMode(true);
+      setValue('industry', '', { shouldDirty: true });
+    } else {
+      setCustomMode(false);
+      setValue('industry', e.target.value, { shouldDirty: true });
+    }
+  };
 
   const onSubmit = async (values: FormValues) => {
     setError(null);
@@ -114,19 +135,29 @@ export function ProfilePage() {
             />
           </div>
 
-          <div>
+          <div className="space-y-2">
             <label className="mb-1 block text-xs font-medium text-slate-600">Industry</label>
             <select
+              value={selectValue}
+              onChange={handleSelectChange}
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-              {...register('industry')}
             >
               <option value="">Select industry</option>
               {INDUSTRIES.map((i) => (
-                <option key={i} value={i}>
-                  {i}
-                </option>
+                <option key={i} value={i}>{i}</option>
               ))}
+              <option value="__custom__">Other — type your own</option>
             </select>
+            {customMode && (
+              <input
+                type="text"
+                value={industryValue}
+                onChange={(e) => setValue('industry', e.target.value, { shouldDirty: true })}
+                placeholder="e.g. Podcast Production, Interior Design…"
+                autoFocus
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+              />
+            )}
           </div>
 
           <div>
