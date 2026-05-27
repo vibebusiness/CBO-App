@@ -957,7 +957,10 @@ app.post('/api/events/:id/ai-match', authMiddleware, async (req, res) => {
     const myProfile = meRes.rows[0];
     if (!myProfile) return res.status(404).json({ error: 'Profile not found' });
 
-    // Fetch all other checked-in attendees
+    // IDs already shown to this user in this session
+    const excludeIds = Array.isArray(req.body.excludeIds) ? req.body.excludeIds : [];
+
+    // Fetch all other checked-in attendees, excluding already-seen ones
     const attendeesRes = await pool.query(
       `SELECT u.id, u.full_name, u.business_name, u.tagline, u.industry
        FROM checkins c
@@ -965,14 +968,16 @@ app.post('/api/events/:id/ai-match', authMiddleware, async (req, res) => {
        WHERE c.event_id = $1 AND c.user_id != $2`,
       [req.params.id, me.id]
     );
-    // Shuffle so repeated taps return different picks
+
+    // Filter out anyone already shown, then shuffle the remainder
     const attendees = attendeesRes.rows
+      .filter(a => !excludeIds.includes(a.id))
       .map(a => ({ a, sort: Math.random() }))
       .sort((x, y) => x.sort - y.sort)
       .map(({ a }) => a);
 
     if (attendees.length === 0) {
-      return res.status(400).json({ error: 'No other attendees to match with yet' });
+      return res.status(400).json({ error: "You've been matched with everyone here! Go meet them all." });
     }
 
     const attendeeList = attendees.map((a, i) =>
@@ -1021,6 +1026,7 @@ ${attendeeList}`;
     const match = attendees[idx];
     res.json({
       match: {
+        id: match.id,
         full_name: match.full_name,
         business_name: match.business_name,
         tagline: match.tagline,

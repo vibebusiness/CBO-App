@@ -24,6 +24,7 @@ export function EventAttendeesPage() {
   const [matchLoading, setMatchLoading] = React.useState(false);
   const [matchResult, setMatchResult] = React.useState<AiMatchResult | null>(null);
   const [matchError, setMatchError] = React.useState<string | null>(null);
+  const seenIds = React.useRef<string[]>([]);
 
   React.useEffect(() => {
     if (!id) return;
@@ -65,10 +66,10 @@ export function EventAttendeesPage() {
   const handleFindMatch = async () => {
     if (!id) return;
     setMatchLoading(true);
-    setMatchResult(null);
     setMatchError(null);
     try {
-      const result = await getAiMatch(id);
+      const result = await getAiMatch(id, seenIds.current);
+      seenIds.current = [...seenIds.current, result.match.id];
       setMatchResult(result);
     } catch (e: unknown) {
       setMatchError((e as Error).message ?? 'Something went wrong');

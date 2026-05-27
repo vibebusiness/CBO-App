@@ -180,6 +180,7 @@ export async function getEventAttendees(eventId: string): Promise<{ full_name: s
 // AI Match
 export type AiMatchResult = {
   match: {
+    id: string;
     full_name: string | null;
     business_name: string | null;
     tagline: string | null;
@@ -189,8 +190,11 @@ export type AiMatchResult = {
   icebreaker: string;
 };
 
-export async function getAiMatch(eventId: string): Promise<AiMatchResult> {
-  return request(`/events/${eventId}/ai-match`, { method: 'POST' });
+export async function getAiMatch(eventId: string, excludeIds: string[] = []): Promise<AiMatchResult> {
+  return request(`/events/${eventId}/ai-match`, {
+    method: 'POST',
+    body: JSON.stringify({ excludeIds }),
+  });
 }
 
 // Feedback
