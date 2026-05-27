@@ -1,7 +1,7 @@
 import React from 'react';
 import { useRoute, useLocation, Link } from 'wouter';
 import { isAfter, subHours, addHours } from 'date-fns';
-import { getEvent, getCheckIns, checkIn, getNetworkingCurrent, getToken, getMyFeedback, submitFeedback } from '../lib/api';
+import { getEvent, getCheckIns, checkIn, getNetworkingCurrent, getToken, getMyFeedback, submitFeedback, updateProfile } from '../lib/api';
 import type { Event, CheckIn, NetworkingCurrent, EventFeedback } from '../types/models';
 import { useAuth } from '../state/auth';
 import { fmtET } from '../lib/tz';
@@ -153,10 +153,95 @@ function FeedbackCard({ eventId }: { eventId: string }) {
   );
 }
 
+function ProfilePromptModal({
+  user,
+  onSave,
+  onSkip,
+}: {
+  user: { business_name?: string | null; tagline?: string | null; full_name?: string | null } | null;
+  onSave: (business_name: string, tagline: string) => Promise<void>;
+  onSkip: () => void;
+}) {
+  const [businessName, setBusinessName] = React.useState(user?.business_name ?? '');
+  const [tagline, setTagline] = React.useState(user?.tagline ?? '');
+  const [saving, setSaving] = React.useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(businessName, tagline);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-4 pb-6 sm:items-center">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="mb-1 flex items-center gap-2">
+          <span className="text-xl">👋</span>
+          <h2 className="text-base font-bold text-slate-900">Finish your profile</h2>
+        </div>
+        <p className="mb-5 text-sm text-slate-500 leading-relaxed">
+          Other members see this when browsing who's at the event. Takes 10 seconds!
+        </p>
+
+        <div className="space-y-3">
+          {!user?.business_name && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Business name</label>
+              <input
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                placeholder="Your company or brand"
+                value={businessName}
+                onChange={e => setBusinessName(e.target.value)}
+                autoFocus
+              />
+            </div>
+          )}
+          {!user?.tagline && (
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <label className="text-xs font-medium text-slate-600">What do you do?</label>
+                <span className={['text-xs', tagline.length > 100 ? 'text-orange-500' : 'text-slate-400'].join(' ')}>
+                  {tagline.length}/120
+                </span>
+              </div>
+              <input
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                placeholder="e.g. I help small businesses build their online presence"
+                maxLength={120}
+                value={tagline}
+                onChange={e => setTagline(e.target.value)}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="mt-5 flex gap-2">
+          <button
+            onClick={onSkip}
+            className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-500 transition hover:bg-slate-50"
+          >
+            Skip for now
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || (!businessName.trim() && !tagline.trim())}
+            className="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-40"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function EventDetailPage() {
   const [, params] = useRoute('/events/:id');
   const [, navigate] = useLocation();
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
 
   const [event, setEvent] = React.useState<Event | null>(null);
   const [myCheckin, setMyCheckin] = React.useState<CheckIn | null>(null);
@@ -164,6 +249,7 @@ export function EventDetailPage() {
   const [checkingIn, setCheckingIn] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
   const [notFound, setNotFound] = React.useState(false);
+  const [showProfilePrompt, setShowProfilePrompt] = React.useState(false);
 
   // networking state: undefined = not loaded yet, null = no active round
   const [networkingGroup, setNetworkingGroup] = React.useState<NetworkingCurrent | null | undefined>(undefined);
@@ -220,6 +306,10 @@ export function EventDetailPage() {
         setMsg('You are already checked in!');
       } else {
         setMyCheckin(res as CheckIn);
+        // Prompt to complete profile if business name or tagline is missing
+        if (!user?.business_name || !user?.tagline) {
+          setShowProfilePrompt(true);
+        }
       }
     } catch (e: unknown) {
       setMsg((e as Error).message);
@@ -251,6 +341,23 @@ export function EventDetailPage() {
 
   return (
     <div>
+      {/* Profile completion prompt */}
+      {showProfilePrompt && (
+        <ProfilePromptModal
+          user={user}
+          onSave={async (business_name, tagline) => {
+            await updateProfile({
+              full_name: user?.full_name ?? '',
+              business_name: business_name || undefined,
+              tagline: tagline || undefined,
+            });
+            await refresh();
+            setShowProfilePrompt(false);
+          }}
+          onSkip={() => setShowProfilePrompt(false)}
+        />
+      )}
+
       {/* Back button */}
       <button
         onClick={() => window.history.back()}
