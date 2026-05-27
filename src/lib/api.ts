@@ -177,6 +177,22 @@ export async function getEventAttendees(eventId: string): Promise<{ full_name: s
   return request(`/events/${eventId}/attendees`);
 }
 
+// AI Match
+export type AiMatchResult = {
+  match: {
+    full_name: string | null;
+    business_name: string | null;
+    tagline: string | null;
+    industry: string | null;
+  };
+  reason: string;
+  icebreaker: string;
+};
+
+export async function getAiMatch(eventId: string): Promise<AiMatchResult> {
+  return request(`/events/${eventId}/ai-match`, { method: 'POST' });
+}
+
 // Feedback
 export async function getMyFeedback(eventId: string): Promise<EventFeedback | null> {
   return request(`/events/${eventId}/my-feedback`);

@@ -7,12 +7,22 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import OpenAI from 'openai';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { Pool } = pg;
 const app = express();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
+function getOpenAI() {
+  if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY || !process.env.AI_INTEGRATIONS_OPENAI_BASE_URL) {
+    throw new Error('AI integration not configured');
+  }
+  return new OpenAI({
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  });
+}
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -930,6 +940,89 @@ app.get('/api/admin/invite/verify', async (req, res) => {
     res.json({ valid: !!result.rows[0] });
   } catch {
     res.status(500).json({ valid: false });
+  }
+});
+
+// ── AI Match ──────────────────────────────────────────────────────────────
+
+app.post('/api/events/:id/ai-match', authMiddleware, async (req, res) => {
+  try {
+    const me = req.user;
+
+    // Fetch current user's full profile
+    const meRes = await pool.query(
+      'SELECT full_name, business_name, tagline, industry FROM users WHERE id = $1',
+      [me.id]
+    );
+    const myProfile = meRes.rows[0];
+    if (!myProfile) return res.status(404).json({ error: 'Profile not found' });
+
+    // Fetch all other checked-in attendees
+    const attendeesRes = await pool.query(
+      `SELECT u.id, u.full_name, u.business_name, u.tagline, u.industry
+       FROM checkins c
+       JOIN users u ON c.user_id = u.id
+       WHERE c.event_id = $1 AND c.user_id != $2`,
+      [req.params.id, me.id]
+    );
+    const attendees = attendeesRes.rows;
+
+    if (attendees.length === 0) {
+      return res.status(400).json({ error: 'No other attendees to match with yet' });
+    }
+
+    const attendeeList = attendees.map((a, i) =>
+      `[${i + 1}] Name: ${a.full_name || 'Unknown'} | Business: ${a.business_name || 'N/A'} | Industry: ${a.industry || 'N/A'} | What they do: ${a.tagline || 'N/A'}`
+    ).join('\n');
+
+    const systemPrompt = `You are a strategic networking assistant for a business owners networking group called Charlotte Business Owners (CBO). Your job is to review a member's profile and the list of other attendees at their event, then identify the single best strategic partner for them and craft a warm, natural ice-breaking opening line.
+
+Rules:
+- Pick exactly ONE person who would be the most valuable strategic partner (referral source, complementary service, potential collaboration, or client relationship).
+- Give a brief, specific reason (1-2 sentences) explaining WHY they are the best match.
+- Write a single ice-breaking opening line (1 sentence) the user can say OUT LOUD to go meet this person. Make it warm, conversational, and specific to what this person does — not generic. It should feel like something a real person would say, not a sales pitch.
+- Respond ONLY with valid JSON matching this exact schema: {"matchIndex": <number 1-based>, "reason": "<string>", "icebreaker": "<string>"}`;
+
+    const userPrompt = `MY PROFILE:
+Name: ${myProfile.full_name || 'Unknown'}
+Business: ${myProfile.business_name || 'N/A'}
+Industry: ${myProfile.industry || 'N/A'}
+What I do: ${myProfile.tagline || 'N/A'}
+
+OTHER ATTENDEES:
+${attendeeList}`;
+
+    const completion = await getOpenAI().chat.completions.create({
+      model: 'gpt-5-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      response_format: { type: 'json_object' },
+      max_completion_tokens: 512,
+    });
+
+    const raw = completion.choices[0].message.content;
+    const parsed = JSON.parse(raw);
+    const idx = parsed.matchIndex - 1;
+    if (idx < 0 || idx >= attendees.length) {
+      return res.status(500).json({ error: 'AI returned invalid match index' });
+    }
+
+    const match = attendees[idx];
+    res.json({
+      match: {
+        full_name: match.full_name,
+        business_name: match.business_name,
+        tagline: match.tagline,
+        industry: match.industry,
+      },
+      reason: parsed.reason,
+      icebreaker: parsed.icebreaker,
+    });
+  } catch (e) {
+    console.error('AI match error:', e);
+    res.status(500).json({ error: 'Something went wrong — try again in a moment' });
   }
 });
 
