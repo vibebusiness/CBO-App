@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '../state/auth';
+import { InstallBanner } from './InstallBanner';
 
 function NavLink({ href, label, icon }: { href: string; label: string; icon: string }) {
   const [loc] = useLocation();
@@ -47,7 +48,10 @@ export function AuthedLayout({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* Main content */}
-      <main className="mx-auto max-w-md px-4 pb-28 pt-4">{children}</main>
+      <main className="mx-auto max-w-md px-4 pb-28 pt-4">
+        <InstallBanner />
+        {children}
+      </main>
 
       {/* Bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 border-t border-slate-200 bg-white/95 backdrop-blur">
