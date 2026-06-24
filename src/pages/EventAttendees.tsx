@@ -1,6 +1,6 @@
 import React from 'react';
 import { useRoute, useLocation } from 'wouter';
-import { getEvent, getEventAttendees, getAiMatch, getConversations, type AiMatchResult, type ConversationSummary } from '../lib/api';
+import { getEvent, getEventAttendees, getAiMatch, getConversations, startConversation, getAiDraft, sendMessage, type AiMatchResult, type ConversationSummary } from '../lib/api';
 import type { Event } from '../types/models';
 import { useAuth } from '../state/auth';
 import { ChatDrawer, InboxPanel, ConnectModal } from '../components/EventChat';
@@ -60,6 +60,8 @@ export function EventAttendeesPage() {
   const [matchLoading, setMatchLoading] = React.useState(false);
   const [matchResult, setMatchResult] = React.useState<AiMatchResult | null>(null);
   const [matchError, setMatchError] = React.useState<string | null>(null);
+  const [modePicker, setModePicker] = React.useState(false);
+  const [matchMode, setMatchMode] = React.useState<'regular' | 'bold' | null>(null);
   const seenIds = React.useRef<string[]>([]);
 
   const { user } = useAuth();
@@ -135,18 +137,54 @@ export function EventAttendeesPage() {
     btn?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
   }, [activeTab]);
 
-  const handleFindMatch = async () => {
+  const runMatch = async (mode: 'regular' | 'bold') => {
     if (!id) return;
+    setModePicker(false);
+    setMatchMode(mode);
     setMatchLoading(true);
     setMatchError(null);
     try {
       const result = await getAiMatch(id, seenIds.current);
       seenIds.current = [...seenIds.current, result.match.id];
       setMatchResult(result);
+
+      const matched = attendees.find((a) => a.id === result.match.id);
+      const avatar = matched?.avatar_url ?? null;
+
+      if (mode === 'regular') {
+        // Open the compose flow so the user can review/edit before sending.
+        setConnectTarget({
+          id: result.match.id,
+          full_name: result.match.full_name,
+          business_name: result.match.business_name,
+          tagline: result.match.tagline ?? null,
+          industry: result.match.industry ?? null,
+          avatar_url: avatar,
+        });
+      } else {
+        // Bold: draft a message and auto-send it without the user reviewing.
+        const conv = await startConversation(id, result.match.id);
+        let body = '';
+        try {
+          body = (await getAiDraft(id, result.match.id)).draft;
+        } catch {
+          /* fall through to fallback below */
+        }
+        body = (body && body.trim())
+          || result.icebreaker
+          || `Hi ${result.match.full_name ?? 'there'} — great to connect with you here at the event!`;
+        await sendMessage(conv.id, body);
+        openChat(conv.id, {
+          name: result.match.full_name,
+          business: result.match.business_name,
+          avatar,
+        });
+      }
     } catch (e: unknown) {
       setMatchError((e as Error).message ?? 'Something went wrong');
     } finally {
       setMatchLoading(false);
+      setMatchMode(null);
     }
   };
 
@@ -210,7 +248,7 @@ export function EventAttendeesPage() {
             </div>
           </div>
           <button
-            onClick={handleFindMatch}
+            onClick={() => setModePicker(true)}
             disabled={matchLoading}
             className="w-full rounded-xl bg-violet-600 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:opacity-60"
           >
@@ -220,7 +258,7 @@ export function EventAttendeesPage() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                Finding your match…
+                {matchMode === 'bold' ? 'Drafting & sending…' : 'Finding your match…'}
               </span>
             ) : matchResult ? 'Find a different match' : 'Find my match ✨'}
           </button>
@@ -361,6 +399,65 @@ export function EventAttendeesPage() {
                   </div>
                 );
               })}
+          </div>
+        </div>
+      )}
+
+      {/* Match style picker */}
+      {modePicker && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 sm:items-center sm:justify-center"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Choose how to match"
+          onClick={() => setModePicker(false)}
+        >
+          <div
+            className="w-full rounded-t-3xl bg-white p-5 shadow-xl sm:max-w-sm sm:rounded-3xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-slate-200 sm:hidden" />
+            <h3 className="text-center text-base font-bold text-slate-900">How should we break the ice?</h3>
+            <p className="mx-auto mt-1 mb-4 max-w-xs text-center text-xs text-slate-500">
+              We'll pick your best match either way.
+            </p>
+
+            <button
+              onClick={() => runMatch('regular')}
+              className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-violet-300 hover:bg-violet-50"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-lg">✍️</div>
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Regular</div>
+                  <div className="text-xs text-slate-500 leading-relaxed">
+                    Draft a message and let you review it before sending.
+                  </div>
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => runMatch('bold')}
+              className="mt-3 w-full rounded-2xl border border-violet-300 bg-gradient-to-br from-violet-600 to-indigo-600 p-4 text-left text-white transition hover:from-violet-700 hover:to-indigo-700"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20 text-lg">⚡</div>
+                <div>
+                  <div className="text-sm font-semibold">Bold</div>
+                  <div className="text-xs text-violet-100 leading-relaxed">
+                    Draft a message and auto-send it to your match instantly.
+                  </div>
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setModePicker(false)}
+              className="mt-4 w-full py-2 text-center text-sm font-medium text-slate-500 transition hover:text-slate-700"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}
