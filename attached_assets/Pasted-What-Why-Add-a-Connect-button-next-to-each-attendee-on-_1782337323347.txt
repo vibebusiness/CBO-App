@@ -1,0 +1,40 @@
+What & Why
+Add a "Connect" button next to each attendee on the Who's Here page so members and admins can send each other quick messages mid-event. The sender gets an AI-drafted icebreaker (editable) and can add their own note. Recipients can reply, and the conversation continues back and forth — all live, no refresh needed. After midnight on the event day, messaging closes.
+
+Done looks like
+Every attendee card on /events/:id/attendees has a Connect button — visible to all checked-in users including admins. Hidden on the current user's own card.
+Tapping Connect opens a bottom sheet / modal showing:
+An AI-generated opener personalised to the recipient's name, business, and industry (via OpenAI).
+An editable text area pre-filled with the AI message that the sender can tweak or clear.
+A Send button that dispatches the first message.
+A conversation thread (like a simple chat) opens between the two users, scoped to the event. Both parties can keep sending messages back and forth.
+Messages appear in real-time for both sides without a manual refresh (short-interval polling on the open conversation is acceptable; WebSockets not required).
+An inbox icon (with unread badge) in the Who's Here page header shows pending conversations. Clicking it opens a list of all conversations for this event.
+After midnight on the event day the message input is disabled and a note says "Messaging closed for this event."
+Connection requests and threads are scoped to a single event.
+Admins have full access to the Connect feature as participants (no separate admin-only UI needed).
+Out of scope
+Push/email notifications (in-app only).
+Real-time WebSockets (polling every few seconds on the open conversation is fine).
+Admin moderation or deletion of member messages.
+Blocking / reporting.
+Messages surviving past midnight (new messages blocked; existing threads remain readable).
+Steps
+Database schema — Create two tables in the server startup migration block:
+
+event_conversations: id, event_id, initiator_id, recipient_id, created_at. Unique on (event_id, initiator_id, recipient_id) (one thread per pair per event; use lower/higher id convention to avoid duplicate pairs).
+event_messages: id, conversation_id, sender_id, body, sent_at. Indexed on (conversation_id, sent_at).
+Backend: conversation & message endpoints — Add Express routes (all require auth; midnight cutoff enforced server-side):
+
+POST /api/events/:eventId/conversations — start or retrieve an existing conversation with a recipient. Returns the conversation object.
+GET /api/events/:eventId/conversations — list all conversations for this event where the caller is a participant, with latest message and unread count.
+GET /api/conversations/:id/messages — paginated message history for a conversation.
+POST /api/conversations/:id/messages — send a message. Returns 403 if current server time is past midnight of the event day.
+Backend: AI draft endpoint — POST /api/events/:eventId/connections/ai-draft accepts { recipientId }, looks up recipient profile, calls OpenAI to generate a short warm icebreaker (2–3 sentences). Returns { draft: string }.
+
+Frontend: Connect button + start-conversation modal — On each attendee card in EventAttendees.tsx, add a Connect button. Tapping it: (a) calls the AI draft endpoint showing a spinner, (b) opens a modal with the editable draft and a Send button. Sending creates the conversation and opens the chat thread. If a conversation already exists, skip the draft step and open the thread directly.
+
+Frontend: Chat thread UI — A drawer or modal that shows the message history between the two users for this event. Includes a text input and send button at the bottom. Polls for new messages every 3–4 seconds while the drawer is open (clears on close). Disables input and shows a "Messaging closed" notice after midnight.
+
+Frontend: Inbox panel — An envelope/bell icon with an unread badge in the Who's Here page header. Opens a panel listing all conversations for this event (most recent first). Each row shows the other person's name, their latest message snippet, and an unread indicator. Clicking a row opens the chat thread drawer. The inbox also polls every few seconds to refresh unread counts.
+
