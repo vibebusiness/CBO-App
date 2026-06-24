@@ -71,6 +71,20 @@ pool.query(`
 pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS tagline varchar(120)`)
   .catch((e) => console.error('tagline column init failed:', e));
 
+// user_avatars — headshots stored in PostgreSQL (upserted per user)
+pool.query(`
+  CREATE TABLE IF NOT EXISTS user_avatars (
+    user_id uuid PRIMARY KEY,
+    data bytea NOT NULL,
+    mime_type varchar(64) NOT NULL,
+    updated_at timestamptz DEFAULT now()
+  )
+`).catch((e) => console.error('user_avatars table init failed:', e));
+
+// Add avatar_url to users
+pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url varchar(255)`)
+  .catch((e) => console.error('avatar_url column init failed:', e));
+
 // Create event_feedback table
 pool.query(`
   CREATE TABLE IF NOT EXISTS event_feedback (
@@ -254,6 +268,21 @@ async function sendGhlPasswordResetEmail(toEmail, resetLink) {
   }
 }
 
+// Serve user avatar headshots
+app.get('/avatars/:userId', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT data, mime_type FROM user_avatars WHERE user_id = $1', [req.params.userId]);
+    if (!result.rows.length) return res.status(404).send('Not found');
+    const { data, mime_type } = result.rows[0];
+    res.setHeader('Content-Type', mime_type);
+    res.setHeader('Cache-Control', 'public, max-age=604800');
+    res.send(data);
+  } catch (e) {
+    console.error('Avatar serve error:', e);
+    res.status(500).send('Error');
+  }
+});
+
 // Serve uploaded images directly from PostgreSQL
 app.get('/uploads/:id', async (req, res) => {
   try {
@@ -315,6 +344,26 @@ app.post('/api/upload', authMiddleware, adminOnly, upload.single('image'), async
   }
 });
 
+// ── Avatar upload ─────────────────────────────────────────────────────────
+
+app.post('/api/profile/avatar', authMiddleware, upload.single('avatar'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    await pool.query(
+      `INSERT INTO user_avatars (user_id, data, mime_type, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET data = $2, mime_type = $3, updated_at = NOW()`,
+      [req.user.id, req.file.buffer, req.file.mimetype]
+    );
+    const avatarUrl = `/avatars/${req.user.id}`;
+    await pool.query('UPDATE users SET avatar_url = $1 WHERE id = $2', [avatarUrl, req.user.id]);
+    res.json({ avatar_url: avatarUrl });
+  } catch (e) {
+    console.error('Avatar upload error:', e);
+    res.status(500).json({ error: 'Upload failed' });
+  }
+});
+
 // ── Auth ──────────────────────────────────────────────────────────────────
 
 app.post('/api/auth/signup', async (req, res) => {
@@ -335,7 +384,7 @@ app.post('/api/auth/signup', async (req, res) => {
       if (tkRes.rows[0]) { role = 'admin'; tokenRow = tkRes.rows[0]; }
     }
     const result = await pool.query(
-      'INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id, email, role, full_name, business_name, tagline, industry, phone, created_at',
+      'INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id, email, role, full_name, business_name, tagline, industry, phone, avatar_url, created_at',
       [email.toLowerCase().trim(), hash, role]
     );
     const user = result.rows[0];
@@ -355,7 +404,7 @@ app.post('/api/auth/signin', async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
   try {
     const result = await pool.query(
-      'SELECT id, email, role, full_name, business_name, tagline, industry, phone, created_at, password_hash FROM users WHERE email = $1',
+      'SELECT id, email, role, full_name, business_name, tagline, industry, phone, avatar_url, created_at, password_hash FROM users WHERE email = $1',
       [email.toLowerCase().trim()]
     );
     const user = result.rows[0];
@@ -373,7 +422,7 @@ app.post('/api/auth/signin', async (req, res) => {
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, email, role, full_name, business_name, tagline, industry, phone, created_at FROM users WHERE id = $1',
+      'SELECT id, email, role, full_name, business_name, tagline, industry, phone, avatar_url, created_at FROM users WHERE id = $1',
       [req.user.id]
     );
     if (!result.rows[0]) return res.status(404).json({ error: 'User not found' });
@@ -479,7 +528,7 @@ app.patch('/api/profile', authMiddleware, async (req, res) => {
     const result = await pool.query(
       `UPDATE users SET full_name = $1, business_name = $2, tagline = $3, industry = $4, phone = $5
        WHERE id = $6
-       RETURNING id, email, role, full_name, business_name, tagline, industry, phone, created_at`,
+       RETURNING id, email, role, full_name, business_name, tagline, industry, phone, avatar_url, created_at`,
       [full_name.trim(), business_name ?? null, tagline ? tagline.slice(0, 120) : null, industry ?? null, phone ?? null, req.user.id]
     );
     res.json(result.rows[0]);
@@ -781,7 +830,7 @@ app.get('/api/events/:id/networking/current', authMiddleware, async (req, res) =
 app.get('/api/events/:id/attendees', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT u.full_name, u.industry, u.business_name, u.tagline
+      `SELECT u.full_name, u.industry, u.business_name, u.tagline, u.avatar_url
        FROM checkins c
        JOIN users u ON c.user_id = u.id
        WHERE c.event_id = $1

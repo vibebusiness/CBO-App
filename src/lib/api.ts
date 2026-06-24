@@ -45,6 +45,7 @@ export type AppUser = {
   tagline: string | null;
   industry: string | null;
   phone: string | null;
+  avatar_url: string | null;
   created_at: string;
 };
 
@@ -82,6 +83,21 @@ export async function updateProfile(data: {
   phone?: string;
 }): Promise<AppUser> {
   return request('/profile', { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+// Avatar upload
+export async function uploadAvatar(file: File): Promise<string> {
+  const token = getToken();
+  const form = new FormData();
+  form.append('avatar', file);
+  const res = await fetch('/api/profile/avatar', {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'Upload failed');
+  return data.avatar_url as string;
 }
 
 // Image upload
@@ -173,7 +189,7 @@ export async function resetNetworkingRounds(eventId: string): Promise<void> {
 }
 
 // Attendees directory
-export async function getEventAttendees(eventId: string): Promise<{ full_name: string | null; industry: string | null; business_name: string | null; tagline: string | null }[]> {
+export async function getEventAttendees(eventId: string): Promise<{ full_name: string | null; industry: string | null; business_name: string | null; tagline: string | null; avatar_url: string | null }[]> {
   return request(`/events/${eventId}/attendees`);
 }
 

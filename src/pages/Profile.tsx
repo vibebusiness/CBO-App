@@ -2,7 +2,7 @@ import React from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { updateProfile } from '../lib/api';
+import { updateProfile, uploadAvatar } from '../lib/api';
 import { useAuth } from '../state/auth';
 
 const schema = z.object({
@@ -34,10 +34,80 @@ function isCustomIndustry(val: string) {
   return val !== '' && !INDUSTRIES.includes(val);
 }
 
+function Avatar({ user, onUpload }: {
+  user: { full_name?: string | null; email?: string | null; avatar_url?: string | null };
+  onUpload: (file: File) => Promise<void>;
+}) {
+  const [uploading, setUploading] = React.useState(false);
+  const [imgError, setImgError] = React.useState(false);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setImgError(false);
+    try {
+      await onUpload(file);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const initials = user.full_name?.[0]?.toUpperCase() ?? user.email?.[0]?.toUpperCase() ?? '?';
+
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={uploading}
+        className="group relative"
+        aria-label="Change profile photo"
+      >
+        {user.avatar_url && !imgError ? (
+          <img
+            src={user.avatar_url}
+            alt="Your headshot"
+            className="h-20 w-20 rounded-full object-cover ring-2 ring-slate-200"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-slate-100 text-2xl font-bold text-slate-700 ring-2 ring-slate-200">
+            {initials}
+          </div>
+        )}
+        {/* Overlay on hover */}
+        <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 transition group-hover:opacity-100 group-disabled:opacity-0">
+          <span className="text-xs font-semibold text-white">{uploading ? '…' : '✏️'}</span>
+        </div>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={uploading}
+        className="text-xs font-medium text-slate-500 hover:text-slate-800 disabled:opacity-40"
+      >
+        {uploading ? 'Uploading…' : user.avatar_url ? 'Change photo' : '+ Add headshot'}
+      </button>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFile}
+      />
+    </div>
+  );
+}
+
 export function ProfilePage() {
   const { user, refresh } = useAuth();
   const [saved, setSaved] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [avatarError, setAvatarError] = React.useState<string | null>(null);
 
   const initialIndustry = user?.industry ?? '';
   const [customMode, setCustomMode] = React.useState(() => isCustomIndustry(initialIndustry));
@@ -73,6 +143,18 @@ export function ProfilePage() {
     }
   };
 
+  const handleAvatarUpload = async (file: File) => {
+    setAvatarError(null);
+    try {
+      await uploadAvatar(file);
+      await refresh();
+      // Clear the avatar prompt dismiss flag so it also goes away
+      localStorage.removeItem('cbo_avatar_prompt_dismissed');
+    } catch (e: unknown) {
+      setAvatarError((e as Error).message ?? 'Upload failed');
+    }
+  };
+
   const onSubmit = async (values: FormValues) => {
     setError(null);
     setSaved(false);
@@ -95,20 +177,19 @@ export function ProfilePage() {
   return (
     <div className="space-y-4">
       {/* Profile card */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-lg font-bold text-slate-700">
-            {user?.full_name?.[0]?.toUpperCase() ?? user?.email?.[0]?.toUpperCase() ?? '?'}
-          </div>
-          <div>
-            <div className="font-semibold text-slate-900">{user?.full_name ?? 'Member'}</div>
-            <div className="text-xs text-slate-500">{user?.email}</div>
-            {user?.role === 'admin' && (
-              <span className="mt-1 inline-block rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
-                Admin
-              </span>
-            )}
-          </div>
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <Avatar user={user ?? {}} onUpload={handleAvatarUpload} />
+        {avatarError && (
+          <p className="mt-2 text-center text-xs text-red-500">{avatarError}</p>
+        )}
+        <div className="mt-3 text-center">
+          <div className="font-semibold text-slate-900">{user?.full_name ?? 'Member'}</div>
+          <div className="text-xs text-slate-500">{user?.email}</div>
+          {user?.role === 'admin' && (
+            <span className="mt-1.5 inline-block rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
+              Admin
+            </span>
+          )}
         </div>
       </div>
 

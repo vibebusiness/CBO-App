@@ -8,7 +8,35 @@ type Attendee = {
   industry: string | null;
   business_name: string | null;
   tagline: string | null;
+  avatar_url: string | null;
 };
+
+function AttendeeAvatar({ member, isMatch }: { member: Attendee; isMatch: boolean }) {
+  const [imgError, setImgError] = React.useState(false);
+  const initials = member.full_name?.[0]?.toUpperCase() ?? '?';
+
+  if (member.avatar_url && !imgError) {
+    return (
+      <img
+        src={member.avatar_url}
+        alt={member.full_name ?? 'Member'}
+        className={[
+          'mt-0.5 h-9 w-9 shrink-0 rounded-full object-cover',
+          isMatch ? 'ring-2 ring-violet-300' : 'ring-1 ring-slate-200',
+        ].join(' ')}
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+  return (
+    <div className={[
+      'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold',
+      isMatch ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-600',
+    ].join(' ')}>
+      {initials}
+    </div>
+  );
+}
 
 export function EventAttendeesPage() {
   const [, params] = useRoute('/events/:id/attendees');
@@ -243,12 +271,7 @@ export function EventAttendeesPage() {
                       isMatch ? 'bg-violet-50 ring-1 ring-violet-200' : '',
                     ].join(' ')}
                   >
-                    <div className={[
-                      'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold',
-                      isMatch ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-600',
-                    ].join(' ')}>
-                      {m.full_name?.[0]?.toUpperCase() ?? '?'}
-                    </div>
+                    <AttendeeAvatar member={m} isMatch={isMatch} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className="text-sm font-medium text-slate-900">{m.full_name ?? '—'}</span>
