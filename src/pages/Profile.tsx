@@ -2,8 +2,10 @@ import React from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import QRCode from 'qrcode';
 import { updateProfile, uploadAvatar } from '../lib/api';
 import { useAuth } from '../state/auth';
+import { buildVCard, type VCardContact } from '../lib/vcard';
 
 const schema = z.object({
   full_name: z.string().min(1, 'Name is required'),
@@ -103,6 +105,129 @@ function Avatar({ user, onUpload }: {
   );
 }
 
+/**
+ * Load an image URL, downscale it to a small JPEG, and return the raw base64
+ * (no data: prefix). Keeps the result tiny so the resulting QR stays scannable.
+ * Returns null if the image can't be loaded or processed.
+ */
+async function avatarToBase64(url: string, maxSize = 88, quality = 0.6): Promise<string | null> {
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.crossOrigin = 'anonymous';
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('image load failed'));
+      el.src = url;
+    });
+
+    const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, w, h);
+    const dataUrl = canvas.toDataURL('image/jpeg', quality);
+    const base64 = dataUrl.split(',')[1] ?? '';
+    return base64 || null;
+  } catch {
+    return null;
+  }
+}
+
+function ContactQR({ contact }: { contact: VCardContact & { avatar_url?: string | null } }) {
+  const [dataUrl, setDataUrl] = React.useState<string | null>(null);
+  const [error, setError] = React.useState(false);
+  const [photoBase64, setPhotoBase64] = React.useState<string | null>(null);
+
+  const avatarUrl = contact.avatar_url ?? null;
+
+  // Load + downscale the avatar whenever it changes.
+  React.useEffect(() => {
+    let active = true;
+    if (!avatarUrl) {
+      setPhotoBase64(null);
+      return;
+    }
+    avatarToBase64(avatarUrl).then((b64) => {
+      if (active) setPhotoBase64(b64);
+    });
+    return () => {
+      active = false;
+    };
+  }, [avatarUrl]);
+
+  const vcard = React.useMemo(
+    () => buildVCard({ ...contact, photoBase64 }),
+    [
+      contact.full_name,
+      contact.email,
+      contact.phone,
+      contact.business_name,
+      contact.tagline,
+      photoBase64,
+    ]
+  );
+
+  React.useEffect(() => {
+    let active = true;
+    setError(false);
+
+    const generate = (text: string, withPhoto: boolean) =>
+      QRCode.toDataURL(text, {
+        // Lower error correction when a photo is embedded so the larger
+        // payload still fits in a scannable QR code.
+        errorCorrectionLevel: withPhoto ? 'L' : 'M',
+        margin: 1,
+        width: 320,
+        color: { dark: '#0f172a', light: '#ffffff' },
+      });
+
+    generate(vcard, !!photoBase64)
+      .catch(() => {
+        // Payload too large with the photo — fall back to a photo-less card.
+        if (!photoBase64) throw new Error('qr generation failed');
+        return generate(buildVCard({ ...contact, photoBase64: null }), false);
+      })
+      .then((url) => {
+        if (active) setDataUrl(url);
+      })
+      .catch(() => {
+        if (active) setError(true);
+      });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vcard, photoBase64]);
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="text-sm font-semibold text-slate-800">Your contact QR</h2>
+      <p className="mt-1 text-xs text-slate-500">
+        Have someone scan this with their phone camera to save you as a contact.
+      </p>
+      <div className="mt-4 flex flex-col items-center">
+        {error ? (
+          <p className="py-10 text-xs text-red-500">Couldn’t generate QR code.</p>
+        ) : dataUrl ? (
+          <img
+            src={dataUrl}
+            alt="QR code with your contact details"
+            className="h-56 w-56 rounded-xl border border-slate-100"
+          />
+        ) : (
+          <div className="flex h-56 w-56 items-center justify-center rounded-xl bg-slate-50 text-xs text-slate-400">
+            Generating…
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ProfilePage() {
   const { user, refresh } = useAuth();
   const [saved, setSaved] = React.useState(false);
@@ -192,6 +317,18 @@ export function ProfilePage() {
           )}
         </div>
       </div>
+
+      {/* Contact QR */}
+      <ContactQR
+        contact={{
+          full_name: user?.full_name,
+          email: user?.email,
+          phone: user?.phone,
+          business_name: user?.business_name,
+          tagline: user?.tagline,
+          avatar_url: user?.avatar_url,
+        }}
+      />
 
       {/* Edit form */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
