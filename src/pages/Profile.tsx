@@ -42,10 +42,14 @@ function Avatar({ user, onUpload }: {
 }) {
   const [uploading, setUploading] = React.useState(false);
   const [imgError, setImgError] = React.useState(false);
-  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const cameraRef = React.useRef<HTMLInputElement>(null);
+  const libraryRef = React.useRef<HTMLInputElement>(null);
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    // Reset so picking the same file again still fires onChange.
+    e.target.value = '';
     if (!file) return;
     setUploading(true);
     setImgError(false);
@@ -56,13 +60,32 @@ function Avatar({ user, onUpload }: {
     }
   };
 
+  const pickCamera = () => {
+    setMenuOpen(false);
+    cameraRef.current?.click();
+  };
+  const pickLibrary = () => {
+    setMenuOpen(false);
+    libraryRef.current?.click();
+  };
+
+  // Close the chooser on Escape for keyboard users.
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
+
   const initials = user.full_name?.[0]?.toUpperCase() ?? user.email?.[0]?.toUpperCase() ?? '?';
 
   return (
     <div className="flex flex-col items-center gap-3">
       <button
         type="button"
-        onClick={() => inputRef.current?.click()}
+        onClick={() => setMenuOpen(true)}
         disabled={uploading}
         className="group relative"
         aria-label="Change profile photo"
@@ -87,20 +110,70 @@ function Avatar({ user, onUpload }: {
 
       <button
         type="button"
-        onClick={() => inputRef.current?.click()}
+        onClick={() => setMenuOpen(true)}
         disabled={uploading}
         className="text-xs font-medium text-slate-500 hover:text-slate-800 disabled:opacity-40"
       >
         {uploading ? 'Uploading…' : user.avatar_url ? 'Change photo' : '+ Add headshot'}
       </button>
 
+      {/* Camera = direct capture on mobile; library = normal file picker. */}
       <input
-        ref={inputRef}
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="user"
+        className="hidden"
+        onChange={handleFile}
+      />
+      <input
+        ref={libraryRef}
         type="file"
         accept="image/*"
         className="hidden"
         onChange={handleFile}
       />
+
+      {menuOpen && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40"
+          onClick={() => setMenuOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Profile photo"
+        >
+          <div
+            className="rounded-t-3xl bg-white p-4 pb-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-slate-300" />
+            <p className="mb-3 text-center text-sm font-semibold text-slate-800">Profile photo</p>
+            <button
+              type="button"
+              onClick={pickCamera}
+              className="flex w-full items-center gap-3 rounded-xl px-4 py-3.5 text-left text-sm font-medium text-slate-800 transition hover:bg-slate-50"
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 text-base">📷</span>
+              Take photo
+            </button>
+            <button
+              type="button"
+              onClick={pickLibrary}
+              className="flex w-full items-center gap-3 rounded-xl px-4 py-3.5 text-left text-sm font-medium text-slate-800 transition hover:bg-slate-50"
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-base">🖼️</span>
+              Choose from library
+            </button>
+            <button
+              type="button"
+              onClick={() => setMenuOpen(false)}
+              className="mt-2 w-full rounded-xl bg-slate-100 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-200"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
