@@ -424,7 +424,8 @@ export function EventAttendeesPage() {
 
             <button
               onClick={() => runMatch('regular')}
-              className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-violet-300 hover:bg-violet-50"
+              disabled={matchLoading}
+              className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-violet-300 hover:bg-violet-50 disabled:opacity-60"
             >
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-lg">✍️</div>
@@ -439,7 +440,8 @@ export function EventAttendeesPage() {
 
             <button
               onClick={() => runMatch('bold')}
-              className="mt-3 w-full rounded-2xl border border-violet-300 bg-gradient-to-br from-violet-600 to-indigo-600 p-4 text-left text-white transition hover:from-violet-700 hover:to-indigo-700"
+              disabled={matchLoading}
+              className="mt-3 w-full rounded-2xl border border-violet-300 bg-gradient-to-br from-violet-600 to-indigo-600 p-4 text-left text-white transition hover:from-violet-700 hover:to-indigo-700 disabled:opacity-60"
             >
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20 text-lg">⚡</div>
