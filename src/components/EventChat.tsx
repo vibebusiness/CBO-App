@@ -193,7 +193,11 @@ export function ChatDrawer({
   );
 }
 
-/** Bottom-sheet list of all the caller's conversations for this event. */
+/**
+ * Full-height "Messages" sheet that slides up to the top. Newest conversations
+ * sit at the top and the list fills downward as messages arrive. Dismiss by
+ * swiping the sheet down or tapping the handle/minus at the top.
+ */
 export function InboxPanel({
   eventId,
   onOpenConversation,
@@ -207,6 +211,12 @@ export function InboxPanel({
 }) {
   const [convos, setConvos] = React.useState<ConversationSummary[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [entered, setEntered] = React.useState(false);
+  const [dragY, setDragY] = React.useState(0);
+  const [dragging, setDragging] = React.useState(false);
+  const startY = React.useRef<number | null>(null);
+  const closeTimer = React.useRef<number | null>(null);
+  const closing = React.useRef(false);
 
   const load = React.useCallback(async () => {
     try {
@@ -225,33 +235,100 @@ export function InboxPanel({
   }, [load]);
   usePolling(load, 4000, true);
 
+  // Slide up on mount; clear any pending close timer on unmount.
+  React.useEffect(() => {
+    const id = requestAnimationFrame(() => setEntered(true));
+    return () => {
+      cancelAnimationFrame(id);
+      if (closeTimer.current != null) window.clearTimeout(closeTimer.current);
+    };
+  }, []);
+
+  // Animate down, then unmount. Idempotent so rapid taps/swipes don't queue
+  // multiple timers (which could close a freshly reopened panel).
+  const handleClose = React.useCallback(() => {
+    if (closing.current) return;
+    closing.current = true;
+    setEntered(false);
+    setDragY(0);
+    closeTimer.current = window.setTimeout(onClose, 240);
+  }, [onClose]);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    startY.current = e.touches[0].clientY;
+    setDragging(true);
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (startY.current == null) return;
+    const dy = e.touches[0].clientY - startY.current;
+    setDragY(dy > 0 ? dy : 0);
+  };
+  const onTouchEnd = () => {
+    setDragging(false);
+    if (dragY > 110) handleClose();
+    else setDragY(0);
+    startY.current = null;
+  };
+
+  // Newest first so the most recent conversation stays pinned to the top.
+  const sorted = React.useMemo(
+    () =>
+      [...convos].sort((a, b) => {
+        const at = a.last_at ? new Date(a.last_at).getTime() : 0;
+        const bt = b.last_at ? new Date(b.last_at).getTime() : 0;
+        return bt - at;
+      }),
+    [convos]
+  );
+
+  const translateY = entered ? `${dragY}px` : '100%';
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40" onClick={handleClose}>
       <div
-        className="flex max-h-[80vh] flex-col rounded-t-3xl bg-white shadow-xl"
+        className="flex h-[94vh] flex-col rounded-t-3xl bg-white shadow-xl"
+        style={{
+          transform: `translateY(${translateY})`,
+          transition: dragging ? 'none' : 'transform 240ms ease-out',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+        {/* Drag handle / minus — swipe down or tap to dismiss */}
+        <div
+          className="cursor-grab touch-none pt-2.5 active:cursor-grabbing"
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+        >
+          <button
+            onClick={handleClose}
+            aria-label="Close messages"
+            className="mx-auto block h-1.5 w-10 rounded-full bg-slate-300 transition-colors hover:bg-slate-400"
+          />
+        </div>
+
+        <div className="flex items-center justify-between px-4 py-3">
           <div className="text-sm font-bold text-slate-900">Messages</div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100"
             aria-label="Close"
           >
             ✕
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-2">
+
+        <div className="flex-1 overflow-y-auto border-t border-slate-100 p-2">
           {loading ? (
             <div className="py-10 text-center text-sm text-slate-400">Loading…</div>
-          ) : convos.length === 0 ? (
+          ) : sorted.length === 0 ? (
             <div className="py-10 text-center">
               <div className="mb-2 text-3xl">💬</div>
               <div className="text-sm font-medium text-slate-700">No conversations yet</div>
               <div className="mt-1 text-xs text-slate-400">Tap “Connect” on someone to start chatting.</div>
             </div>
           ) : (
-            convos.map((c) => (
+            sorted.map((c) => (
               <button
                 key={c.id}
                 onClick={() => onOpenConversation(c)}
