@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import QRCode from 'qrcode';
 import { updateProfile, uploadAvatar } from '../lib/api';
+import { resizeImageFile } from '../lib/image';
 import { useAuth } from '../state/auth';
 import { buildVCard, type VCardContact } from '../lib/vcard';
 
@@ -344,7 +345,8 @@ export function ProfilePage() {
   const handleAvatarUpload = async (file: File) => {
     setAvatarError(null);
     try {
-      await uploadAvatar(file);
+      const resized = await resizeImageFile(file);
+      await uploadAvatar(resized);
       await refresh();
       // Clear the avatar prompt dismiss flag so it also goes away
       localStorage.removeItem('cbo_avatar_prompt_dismissed');

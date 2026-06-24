@@ -1,5 +1,6 @@
 import React from 'react';
 import { uploadAvatar } from '../lib/api';
+import { resizeImageFile } from '../lib/image';
 import { useAuth } from '../state/auth';
 
 const DISMISSED_KEY = 'cbo_avatar_prompt_dismissed';
@@ -30,11 +31,13 @@ export function AvatarPrompt() {
     setUploading(true);
     setError(null);
     try {
-      await uploadAvatar(file);
+      const resized = await resizeImageFile(file);
+      await uploadAvatar(resized);
       await refresh();
       // Banner disappears automatically once user.avatar_url is set
     } catch (err: unknown) {
       setError((err as Error).message ?? 'Upload failed');
+    } finally {
       setUploading(false);
     }
   };

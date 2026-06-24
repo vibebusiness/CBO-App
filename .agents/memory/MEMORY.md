@@ -1,1 +1,2 @@
 - [vCard QR with embedded photo](vcard-qr-photo.md) — embedding an avatar in a QR vCard: downscale hard, EC level L, always keep a photo-less fallback.
+- [Avatar/image uploads](avatar-upload-memory.md) — raw full-res image uploads OOM-crash mobile tabs (blank screen); always downscale client-side before upload.
