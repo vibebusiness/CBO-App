@@ -1,14 +1,22 @@
 import React from 'react';
 import { useRoute, useLocation } from 'wouter';
-import { getEvent, getEventAttendees, getAiMatch, type AiMatchResult } from '../lib/api';
+import { getEvent, getEventAttendees, getAiMatch, getConversations, type AiMatchResult, type ConversationSummary } from '../lib/api';
 import type { Event } from '../types/models';
+import { useAuth } from '../state/auth';
+import { ChatDrawer, InboxPanel, ConnectModal } from '../components/EventChat';
 
 type Attendee = {
+  id: string;
   full_name: string | null;
   industry: string | null;
   business_name: string | null;
   tagline: string | null;
   avatar_url: string | null;
+};
+
+type ActiveChat = {
+  conversationId: string;
+  other: { name: string | null; business: string | null; avatar: string | null };
 };
 
 function AttendeeAvatar({ member, isMatch }: { member: Attendee; isMatch: boolean }) {
@@ -53,6 +61,42 @@ export function EventAttendeesPage() {
   const [matchResult, setMatchResult] = React.useState<AiMatchResult | null>(null);
   const [matchError, setMatchError] = React.useState<string | null>(null);
   const seenIds = React.useRef<string[]>([]);
+
+  const { user } = useAuth();
+  const [inboxOpen, setInboxOpen] = React.useState(false);
+  const [connectTarget, setConnectTarget] = React.useState<Attendee | null>(null);
+  const [activeChat, setActiveChat] = React.useState<ActiveChat | null>(null);
+  const [unreadTotal, setUnreadTotal] = React.useState(0);
+
+  // Poll the unread badge total while the page is open (paused when tab hidden).
+  React.useEffect(() => {
+    if (!id) return;
+    let stop = false;
+    const refresh = async () => {
+      if (document.hidden) return;
+      try {
+        const rows = await getConversations(id);
+        if (!stop) setUnreadTotal(rows.reduce((s, c) => s + (c.unread || 0), 0));
+      } catch {
+        /* ignore */
+      }
+    };
+    refresh();
+    const t = window.setInterval(refresh, 8000);
+    return () => {
+      stop = true;
+      window.clearInterval(t);
+    };
+  }, [id, activeChat, inboxOpen, connectTarget]);
+
+  const openChat = (conversationId: string, other: ActiveChat['other']) => {
+    setConnectTarget(null);
+    setInboxOpen(false);
+    setActiveChat({ conversationId, other });
+  };
+
+  const handleInboxOpen = (c: ConversationSummary) =>
+    openChat(c.id, { name: c.other_name, business: c.other_business, avatar: c.other_avatar });
 
   React.useEffect(() => {
     if (!id) return;
@@ -136,6 +180,22 @@ export function EventAttendeesPage() {
           </span>
         </div>
       </div>
+
+      {/* Inbox button */}
+      <button
+        onClick={() => setInboxOpen(true)}
+        className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:bg-slate-50"
+      >
+        <span className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-sm">✉️</span>
+          <span className="text-sm font-semibold text-slate-800">Messages</span>
+        </span>
+        {unreadTotal > 0 && (
+          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-violet-600 px-1.5 text-[11px] font-bold text-white">
+            {unreadTotal}
+          </span>
+        )}
+      </button>
 
       {/* AI Match CTA */}
       {attendees.length > 1 && (
@@ -263,9 +323,10 @@ export function EventAttendeesPage() {
               .sort((a, b) => (a.full_name ?? '').localeCompare(b.full_name ?? ''))
               .map((m, i) => {
                 const isMatch = matchResult?.match.full_name === m.full_name;
+                const isSelf = m.id === user?.id;
                 return (
                   <div
-                    key={i}
+                    key={m.id ?? i}
                     className={[
                       'flex items-start gap-3 rounded-xl px-3 py-3 transition-colors',
                       isMatch ? 'bg-violet-50 ring-1 ring-violet-200' : '',
@@ -275,6 +336,9 @@ export function EventAttendeesPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className="text-sm font-medium text-slate-900">{m.full_name ?? '—'}</span>
+                        {isSelf && (
+                          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">you</span>
+                        )}
                         {isMatch && (
                           <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600">your match ✨</span>
                         )}
@@ -286,11 +350,60 @@ export function EventAttendeesPage() {
                         <div className="mt-0.5 text-xs text-slate-400">{m.tagline}</div>
                       )}
                     </div>
+                    {!isSelf && (
+                      <button
+                        onClick={() => setConnectTarget(m)}
+                        className="mt-0.5 shrink-0 rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-100"
+                      >
+                        Connect
+                      </button>
+                    )}
                   </div>
                 );
               })}
           </div>
         </div>
+      )}
+
+      {/* Connect (AI draft) modal */}
+      {connectTarget && id && (
+        <ConnectModal
+          eventId={id}
+          recipient={{
+            id: connectTarget.id,
+            name: connectTarget.full_name,
+            business: connectTarget.business_name,
+            avatar: connectTarget.avatar_url,
+          }}
+          onClose={() => setConnectTarget(null)}
+          onOpenChat={(conversationId) =>
+            openChat(conversationId, {
+              name: connectTarget.full_name,
+              business: connectTarget.business_name,
+              avatar: connectTarget.avatar_url,
+            })
+          }
+        />
+      )}
+
+      {/* Inbox */}
+      {inboxOpen && id && (
+        <InboxPanel
+          eventId={id}
+          onOpenConversation={handleInboxOpen}
+          onClose={() => setInboxOpen(false)}
+          onCountChange={setUnreadTotal}
+        />
+      )}
+
+      {/* Active chat thread */}
+      {activeChat && user && (
+        <ChatDrawer
+          conversationId={activeChat.conversationId}
+          other={activeChat.other}
+          currentUserId={user.id}
+          onClose={() => setActiveChat(null)}
+        />
       )}
     </div>
   );

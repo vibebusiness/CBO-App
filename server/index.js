@@ -8,6 +8,21 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import OpenAI from 'openai';
+import { fromZonedTime } from 'date-fns-tz';
+
+const ET = 'America/New_York';
+
+// Messaging closes at midnight (ET) at the end of the event's calendar day.
+// Returns the UTC Date of that cutoff for a given event start_at.
+function eventMessagingCutoff(startAt) {
+  const dayET = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ET, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(startAt)); // e.g. "2026-06-24"
+  const next = new Date(`${dayET}T00:00:00`);
+  next.setUTCDate(next.getUTCDate() + 1); // next calendar day (string math safe via UTC parts)
+  const nextDayET = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`;
+  return fromZonedTime(`${nextDayET}T00:00:00`, ET); // midnight ET of the day AFTER the event day
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { Pool } = pg;
@@ -84,6 +99,35 @@ pool.query(`
 // Add avatar_url to users
 pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url varchar(255)`)
   .catch((e) => console.error('avatar_url column init failed:', e));
+
+// event_conversations — one chat thread per pair of members per event.
+// participant_a/participant_b store the pair sorted (a < b) so the unique
+// constraint dedupes regardless of who started it.
+pool.query(`
+  CREATE TABLE IF NOT EXISTS event_conversations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id uuid NOT NULL,
+    participant_a uuid NOT NULL,
+    participant_b uuid NOT NULL,
+    initiator_id uuid NOT NULL,
+    a_last_read_at timestamptz DEFAULT now(),
+    b_last_read_at timestamptz DEFAULT now(),
+    created_at timestamptz DEFAULT now(),
+    UNIQUE(event_id, participant_a, participant_b)
+  )
+`).catch((e) => console.error('event_conversations table init failed:', e));
+
+pool.query(`
+  CREATE TABLE IF NOT EXISTS event_messages (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id uuid NOT NULL,
+    sender_id uuid NOT NULL,
+    body text NOT NULL,
+    sent_at timestamptz DEFAULT now()
+  )
+`)
+  .then(() => pool.query(`CREATE INDEX IF NOT EXISTS idx_event_messages_conv ON event_messages (conversation_id, sent_at)`))
+  .catch((e) => console.error('event_messages table/index init failed:', e));
 
 // Create event_feedback table
 pool.query(`
@@ -830,7 +874,7 @@ app.get('/api/events/:id/networking/current', authMiddleware, async (req, res) =
 app.get('/api/events/:id/attendees', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT u.full_name, u.industry, u.business_name, u.tagline, u.avatar_url
+      `SELECT u.id, u.full_name, u.industry, u.business_name, u.tagline, u.avatar_url
        FROM checkins c
        JOIN users u ON c.user_id = u.id
        WHERE c.event_id = $1
@@ -989,6 +1033,213 @@ app.get('/api/admin/invite/verify', async (req, res) => {
     res.json({ valid: !!result.rows[0] });
   } catch {
     res.status(500).json({ valid: false });
+  }
+});
+
+// ── Connect at Event: conversations & messages ────────────────────────────
+
+// Helper: load an event and confirm messaging is still open (before ET midnight
+// of the event day). Returns { event, closed }.
+async function loadEventForMessaging(eventId) {
+  const r = await pool.query('SELECT id, start_at FROM events WHERE id = $1', [eventId]);
+  const event = r.rows[0];
+  if (!event) return { event: null, closed: true };
+  const closed = new Date() >= eventMessagingCutoff(event.start_at);
+  return { event, closed };
+}
+
+// Both members must be checked into the event to message each other there.
+async function bothCheckedIn(eventId, userA, userB) {
+  const r = await pool.query(
+    'SELECT user_id FROM checkins WHERE event_id = $1 AND user_id = ANY($2)',
+    [eventId, [userA, userB]]
+  );
+  const ids = new Set(r.rows.map((row) => row.user_id));
+  return ids.has(userA) && ids.has(userB);
+}
+
+// Start or fetch a conversation with a recipient for an event.
+app.post('/api/events/:eventId/conversations', authMiddleware, async (req, res) => {
+  try {
+    const me = req.user.id;
+    const recipientId = req.body.recipientId;
+    if (!recipientId) return res.status(400).json({ error: 'recipientId required' });
+    if (recipientId === me) return res.status(400).json({ error: "You can't message yourself" });
+
+    const { event, closed } = await loadEventForMessaging(req.params.eventId);
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+    if (closed) return res.status(403).json({ error: 'Messaging is closed for this event' });
+    if (!(await bothCheckedIn(req.params.eventId, me, recipientId))) {
+      return res.status(403).json({ error: 'Both members must be checked in to connect' });
+    }
+
+    const [a, b] = me < recipientId ? [me, recipientId] : [recipientId, me];
+    const result = await pool.query(
+      `INSERT INTO event_conversations (event_id, participant_a, participant_b, initiator_id)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (event_id, participant_a, participant_b) DO UPDATE SET event_id = EXCLUDED.event_id
+       RETURNING id`,
+      [req.params.eventId, a, b, me]
+    );
+    res.json({ id: result.rows[0].id });
+  } catch (e) {
+    console.error('start conversation error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// List the caller's conversations for an event, with the other person, latest
+// message snippet and unread count.
+app.get('/api/events/:eventId/conversations', authMiddleware, async (req, res) => {
+  try {
+    const me = req.user.id;
+    const result = await pool.query(
+      `SELECT
+         c.id,
+         CASE WHEN c.participant_a = $2 THEN c.participant_b ELSE c.participant_a END AS other_id,
+         u.full_name AS other_name,
+         u.business_name AS other_business,
+         u.avatar_url AS other_avatar,
+         (SELECT body FROM event_messages m WHERE m.conversation_id = c.id ORDER BY m.sent_at DESC LIMIT 1) AS last_body,
+         (SELECT sent_at FROM event_messages m WHERE m.conversation_id = c.id ORDER BY m.sent_at DESC LIMIT 1) AS last_at,
+         (SELECT COUNT(*) FROM event_messages m
+            WHERE m.conversation_id = c.id
+              AND m.sender_id <> $2
+              AND m.sent_at > CASE WHEN c.participant_a = $2 THEN c.a_last_read_at ELSE c.b_last_read_at END
+         )::int AS unread
+       FROM event_conversations c
+       JOIN users u ON u.id = (CASE WHEN c.participant_a = $2 THEN c.participant_b ELSE c.participant_a END)
+       WHERE c.event_id = $1 AND (c.participant_a = $2 OR c.participant_b = $2)
+       ORDER BY last_at DESC NULLS LAST, c.created_at DESC`,
+      [req.params.eventId, me]
+    );
+    res.json(result.rows);
+  } catch (e) {
+    console.error('list conversations error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Fetch message history for a conversation (marks it read for the caller).
+app.get('/api/conversations/:id/messages', authMiddleware, async (req, res) => {
+  try {
+    const me = req.user.id;
+    const convRes = await pool.query('SELECT * FROM event_conversations WHERE id = $1', [req.params.id]);
+    const conv = convRes.rows[0];
+    if (!conv) return res.status(404).json({ error: 'Conversation not found' });
+    if (conv.participant_a !== me && conv.participant_b !== me) {
+      return res.status(403).json({ error: 'Not your conversation' });
+    }
+
+    const msgs = await pool.query(
+      `SELECT id, sender_id, body, sent_at FROM event_messages
+       WHERE conversation_id = $1 ORDER BY sent_at ASC LIMIT 200`,
+      [req.params.id]
+    );
+
+    // Mark read only up to the newest message we actually returned, so a message
+    // arriving after this SELECT isn't silently marked read (never advances backwards).
+    const col = conv.participant_a === me ? 'a_last_read_at' : 'b_last_read_at';
+    if (msgs.rows.length > 0) {
+      const lastSentAt = msgs.rows[msgs.rows.length - 1].sent_at;
+      await pool.query(
+        `UPDATE event_conversations SET ${col} = GREATEST(${col}, $2) WHERE id = $1`,
+        [req.params.id, lastSentAt]
+      );
+    }
+
+    const { closed } = await loadEventForMessaging(conv.event_id);
+    res.json({ messages: msgs.rows, closed });
+  } catch (e) {
+    console.error('get messages error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Send a message in a conversation.
+app.post('/api/conversations/:id/messages', authMiddleware, async (req, res) => {
+  try {
+    const me = req.user.id;
+    const body = (req.body.body ?? '').toString().trim();
+    if (!body) return res.status(400).json({ error: 'Message cannot be empty' });
+    if (body.length > 2000) return res.status(400).json({ error: 'Message is too long' });
+
+    const convRes = await pool.query('SELECT * FROM event_conversations WHERE id = $1', [req.params.id]);
+    const conv = convRes.rows[0];
+    if (!conv) return res.status(404).json({ error: 'Conversation not found' });
+    if (conv.participant_a !== me && conv.participant_b !== me) {
+      return res.status(403).json({ error: 'Not your conversation' });
+    }
+
+    const { closed } = await loadEventForMessaging(conv.event_id);
+    if (closed) return res.status(403).json({ error: 'Messaging is closed for this event' });
+
+    const inserted = await pool.query(
+      `INSERT INTO event_messages (conversation_id, sender_id, body)
+       VALUES ($1, $2, $3) RETURNING id, sender_id, body, sent_at`,
+      [req.params.id, me, body]
+    );
+    // Sending also counts as having read everything up to now on your side.
+    const col = conv.participant_a === me ? 'a_last_read_at' : 'b_last_read_at';
+    await pool.query(`UPDATE event_conversations SET ${col} = now() WHERE id = $1`, [req.params.id]);
+
+    res.json(inserted.rows[0]);
+  } catch (e) {
+    console.error('send message error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// AI-drafted icebreaker for a recipient. Fails soft — returns an empty draft
+// rather than an error so the sender can always write their own.
+app.post('/api/events/:eventId/connections/ai-draft', authMiddleware, async (req, res) => {
+  try {
+    const me = req.user.id;
+    const recipientId = req.body.recipientId;
+    if (!recipientId) return res.status(400).json({ error: 'recipientId required' });
+
+    const { closed } = await loadEventForMessaging(req.params.eventId);
+    if (closed) return res.status(403).json({ error: 'Messaging is closed for this event' });
+    if (!(await bothCheckedIn(req.params.eventId, me, recipientId))) {
+      return res.status(403).json({ error: 'Both members must be checked in to connect' });
+    }
+
+    const rows = await pool.query(
+      'SELECT id, full_name, business_name, tagline, industry FROM users WHERE id = ANY($1)',
+      [[me, recipientId]]
+    );
+    const mine = rows.rows.find(r => r.id === me);
+    const them = rows.rows.find(r => r.id === recipientId);
+    if (!them) return res.status(404).json({ error: 'Recipient not found' });
+
+    try {
+      const systemPrompt = `You are helping a member of Charlotte Business Owners (CBO), a business networking group, write a short, warm opening message to another member they want to connect with at an event. Write a friendly, genuine icebreaker of 2-3 sentences in the FIRST PERSON as the sender. Reference the recipient's business or industry naturally. Keep it conversational and human — no sales pitch, no cheesy lines. Respond ONLY with valid JSON: {"draft": "<the message>"}`;
+      const userPrompt = `ME (sender):
+Name: ${mine?.full_name || 'A member'} | Business: ${mine?.business_name || 'N/A'} | Industry: ${mine?.industry || 'N/A'} | What I do: ${mine?.tagline || 'N/A'}
+
+THEM (recipient):
+Name: ${them.full_name || 'A member'} | Business: ${them.business_name || 'N/A'} | Industry: ${them.industry || 'N/A'} | What they do: ${them.tagline || 'N/A'}`;
+
+      const completion = await getOpenAI().chat.completions.create({
+        model: 'gpt-5.4',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_completion_tokens: 300,
+      });
+      const raw = completion.choices[0]?.message?.content ?? '';
+      const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || raw.match(/(\{[\s\S]*\})/);
+      const jsonStr = jsonMatch ? jsonMatch[1].trim() : raw.trim();
+      const parsed = JSON.parse(jsonStr);
+      return res.json({ draft: (parsed.draft || '').toString().trim() });
+    } catch (aiErr) {
+      console.error('ai-draft generation failed (returning empty draft):', aiErr);
+      return res.json({ draft: '' });
+    }
+  } catch (e) {
+    console.error('ai-draft error:', e);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 

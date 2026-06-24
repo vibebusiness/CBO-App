@@ -189,8 +189,56 @@ export async function resetNetworkingRounds(eventId: string): Promise<void> {
 }
 
 // Attendees directory
-export async function getEventAttendees(eventId: string): Promise<{ full_name: string | null; industry: string | null; business_name: string | null; tagline: string | null; avatar_url: string | null }[]> {
+export async function getEventAttendees(eventId: string): Promise<{ id: string; full_name: string | null; industry: string | null; business_name: string | null; tagline: string | null; avatar_url: string | null }[]> {
   return request(`/events/${eventId}/attendees`);
+}
+
+// Connect at Event — conversations & messages
+export type ConversationSummary = {
+  id: string;
+  other_id: string;
+  other_name: string | null;
+  other_business: string | null;
+  other_avatar: string | null;
+  last_body: string | null;
+  last_at: string | null;
+  unread: number;
+};
+
+export type ChatMessage = {
+  id: string;
+  sender_id: string;
+  body: string;
+  sent_at: string;
+};
+
+export async function startConversation(eventId: string, recipientId: string): Promise<{ id: string }> {
+  return request(`/events/${eventId}/conversations`, {
+    method: 'POST',
+    body: JSON.stringify({ recipientId }),
+  });
+}
+
+export async function getConversations(eventId: string): Promise<ConversationSummary[]> {
+  return request(`/events/${eventId}/conversations`);
+}
+
+export async function getMessages(conversationId: string): Promise<{ messages: ChatMessage[]; closed: boolean }> {
+  return request(`/conversations/${conversationId}/messages`);
+}
+
+export async function sendMessage(conversationId: string, body: string): Promise<ChatMessage> {
+  return request(`/conversations/${conversationId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ body }),
+  });
+}
+
+export async function getAiDraft(eventId: string, recipientId: string): Promise<{ draft: string }> {
+  return request(`/events/${eventId}/connections/ai-draft`, {
+    method: 'POST',
+    body: JSON.stringify({ recipientId }),
+  });
 }
 
 // AI Match
