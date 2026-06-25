@@ -63,12 +63,23 @@ export function AuthPage() {
 
   const handleForgot = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!forgotEmail.trim()) return;
+    const email = forgotEmail.trim();
+    if (!email) return;
     setForgotStatus('sending');
     try {
-      await forgotPassword(forgotEmail.trim());
+      const res = await forgotPassword(email);
+      if (res.exists === false) {
+        // No account for this email — send them straight to sign-up, prefilled.
+        setShowForgot(false);
+        setForgotStatus('idle');
+        setForgotEmail('');
+        setMode('signup');
+        reset({ email, password: '' });
+        setMsg(`We couldn't find an account for ${email}. Create one below to get started.`);
+        return;
+      }
     } catch {
-      // Always show success to avoid revealing whether email exists
+      // On unexpected errors, fall back to the neutral success screen.
     }
     setForgotStatus('sent');
   };

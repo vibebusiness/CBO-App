@@ -484,15 +484,15 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   if (!email || typeof email !== 'string' || !EMAIL_RE.test(email.trim())) {
     return res.status(400).json({ error: 'A valid email address is required' });
   }
-  // Always respond neutrally so we don't reveal whether the email exists
-  res.json({ ok: true });
   const normalised = email.toLowerCase().trim();
   try {
     const userRes = await pool.query('SELECT id FROM users WHERE email = $1', [normalised]);
     if (!userRes.rows[0]) {
-      console.info(`[forgot-password] no account for ${normalised} — skipping`);
-      return;
+      console.info(`[forgot-password] no account for ${normalised}`);
+      return res.json({ ok: true, exists: false });
     }
+    // Account exists — confirm to the client, then dispatch the reset email.
+    res.json({ ok: true, exists: true });
     const userId = userRes.rows[0].id;
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
@@ -510,6 +510,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     console.info(`[forgot-password] reset email dispatched to ${normalised}`);
   } catch (e) {
     console.error('[forgot-password] error:', e);
+    if (!res.headersSent) res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 
