@@ -102,37 +102,51 @@ export function AuthPage() {
           </div>
         )}
 
-        <h1 className="mb-6 text-center text-lg font-semibold text-slate-800">
-          Sign up or log in to the CBO community
-        </h1>
-
         {/* Mode tabs */}
-        <div className="mb-6 flex rounded-xl bg-slate-100 p-1">
-          <button
-            type="button"
-            onClick={() => switchMode('signin')}
-            className={
-              'flex-1 rounded-lg py-2 text-sm font-medium transition-colors ' +
-              (mode === 'signin'
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700')
-            }
-          >
-            Log in
-          </button>
-          <button
-            type="button"
-            onClick={() => switchMode('signup')}
-            className={
-              'flex-1 rounded-lg py-2 text-sm font-medium transition-colors ' +
-              (mode === 'signup'
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700')
-            }
-          >
-            Sign up
-          </button>
-        </div>
+        {!showForgot && (
+          <div className="mb-5 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1.5">
+            <button
+              type="button"
+              onClick={() => switchMode('signin')}
+              aria-pressed={mode === 'signin'}
+              className={
+                'rounded-lg py-2.5 text-sm font-bold transition-all ' +
+                (mode === 'signin'
+                  ? 'bg-slate-900 text-white shadow-md'
+                  : 'bg-transparent text-slate-500 hover:text-slate-800')
+              }
+            >
+              Log in
+            </button>
+            <button
+              type="button"
+              onClick={() => switchMode('signup')}
+              aria-pressed={mode === 'signup'}
+              className={
+                'rounded-lg py-2.5 text-sm font-bold transition-all ' +
+                (mode === 'signup'
+                  ? 'bg-slate-900 text-white shadow-md'
+                  : 'bg-transparent text-slate-500 hover:text-slate-800')
+              }
+            >
+              Sign up
+            </button>
+          </div>
+        )}
+
+        {/* Contextual heading */}
+        {!showForgot && (
+          <div className="mb-6 text-center">
+            <h1 className="text-lg font-bold text-slate-900">
+              {mode === 'signin' ? 'Welcome back' : 'Create your account'}
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              {mode === 'signin'
+                ? 'Log in to your CBO account.'
+                : 'Join the CBO community — it only takes a minute.'}
+            </p>
+          </div>
+        )}
 
         {/* Forgot password panel */}
         {showForgot ? (
@@ -228,6 +242,18 @@ export function AuthPage() {
             >
               {isSubmitting ? 'Please wait…' : mode === 'signin' ? 'Log in' : 'Create account'}
             </button>
+
+            {/* Switch-mode prompt */}
+            <p className="pt-1 text-center text-sm text-slate-500">
+              {mode === 'signin' ? "Don't have an account?" : 'Already a member?'}{' '}
+              <button
+                type="button"
+                onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')}
+                className="font-semibold text-slate-900 underline underline-offset-2 hover:text-slate-700"
+              >
+                {mode === 'signin' ? 'Sign up' : 'Log in'}
+              </button>
+            </p>
           </form>
         )}
       </div>
