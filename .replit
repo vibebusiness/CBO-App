@@ -65,7 +65,7 @@ externalPort = 3000
 [deployment]
 deploymentTarget = "autoscale"
 build = ["npm", "run", "build"]
-publicDir = "dist"
+publicDir = "dist/client"
 run = ["node", "server/index.js"]
 
 [postMerge]

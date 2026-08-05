@@ -1343,8 +1343,12 @@ ${attendeeList}`;
 });
 
 // Serve the built frontend if dist/ exists (production deployment)
-const distPath = path.join(__dirname, '../dist');
-if (fs.existsSync(path.join(distPath, 'index.html'))) {
+const distPath = [
+  path.join(__dirname, '../dist/client'),
+  path.join(__dirname, '../dist'),
+].find((candidate) => fs.existsSync(path.join(candidate, 'index.html')));
+
+if (distPath) {
   app.use(express.static(distPath));
   // SPA fallback — must use app.use so path-to-regexp wildcard issues are avoided
   app.use((_req, res) => {
