@@ -1003,6 +1003,57 @@ app.post('/api/events/:id/checkins', authMiddleware, async (req, res) => {
   }
 });
 
+// Admin manual check-in: check in an attendee by email, creating an account if needed.
+app.post('/api/events/:eventId/checkins/manual', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { email, fullName } = req.body || {};
+    const normalised = (email || '').toLowerCase().trim();
+    if (!EMAIL_RE.test(normalised)) return res.status(400).json({ error: 'Valid email required' });
+
+    const eventRes = await pool.query('SELECT id FROM events WHERE id = $1', [req.params.eventId]);
+    if (!eventRes.rows[0]) return res.status(404).json({ error: 'Event not found' });
+
+    let userRes = await pool.query('SELECT id, full_name FROM users WHERE lower(email) = $1', [normalised]);
+    let user = userRes.rows[0];
+    let created = false;
+    if (!user) {
+      if (!fullName || !fullName.trim()) {
+        return res.status(400).json({ error: 'No account found for that email — provide a name to create one' });
+      }
+      // Account created without a usable password; the attendee uses "Forgot password" to set one.
+      const randomPassword = crypto.randomBytes(24).toString('hex');
+      const hash = await bcrypt.hash(randomPassword, 10);
+      const insertRes = await pool.query(
+        'INSERT INTO users (email, password_hash, role, full_name) VALUES ($1, $2, $3, $4) ON CONFLICT (email) DO NOTHING RETURNING id, full_name',
+        [normalised, hash, 'member', fullName.trim()]
+      );
+      if (insertRes.rows[0]) {
+        user = insertRes.rows[0];
+        created = true;
+      } else {
+        // Concurrent request created the account first — use the existing one.
+        userRes = await pool.query('SELECT id, full_name FROM users WHERE lower(email) = $1', [normalised]);
+        user = userRes.rows[0];
+        if (!user) return res.status(500).json({ error: 'Could not create or find the account — try again' });
+      }
+    }
+
+    const ck = await pool.query(
+      'INSERT INTO checkins (event_id, user_id) VALUES ($1, $2) ON CONFLICT (event_id, user_id) DO NOTHING RETURNING *',
+      [req.params.eventId, user.id]
+    );
+    res.json({
+      ok: true,
+      created_account: created,
+      already_checked_in: ck.rows.length === 0,
+      user: { id: user.id, email: normalised, full_name: user.full_name },
+    });
+  } catch (e) {
+    console.error('[manual-checkin] error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.delete('/api/events/:eventId/checkins/:userId', authMiddleware, adminOnly, async (req, res) => {
   try {
     await pool.query('DELETE FROM checkins WHERE event_id = $1 AND user_id = $2', [req.params.eventId, req.params.userId]);

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams, useLocation } from 'wouter';
-import { getEvent, getCheckIns } from '../lib/api';
+import { getEvent, getCheckIns, adminManualCheckIn } from '../lib/api';
 import type { Event, CheckIn } from '../types/models';
 import { fmtET } from '../lib/tz';
 
@@ -19,6 +19,38 @@ export function DoorCheckPage() {
   const [loading, setLoading] = React.useState(true);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const lastUpdatedRef = React.useRef<Date>(new Date());
+
+  const [manualEmail, setManualEmail] = React.useState('');
+  const [manualName, setManualName] = React.useState('');
+  const [manualBusy, setManualBusy] = React.useState(false);
+  const [manualMsg, setManualMsg] = React.useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  const handleManualCheckIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const email = manualEmail.trim();
+    if (!email || manualBusy) return;
+    setManualBusy(true);
+    setManualMsg(null);
+    try {
+      const r = await adminManualCheckIn(id, email, manualName.trim() || undefined);
+      const who = r.user.full_name || r.user.email;
+      setManualMsg({
+        kind: 'ok',
+        text: r.already_checked_in
+          ? `${who} was already checked in.`
+          : r.created_account
+            ? `Account created and ${who} checked in. They can use "Forgot password" to set a password.`
+            : `${who} checked in.`,
+      });
+      setManualEmail('');
+      setManualName('');
+      fetchCheckins();
+    } catch (err: any) {
+      setManualMsg({ kind: 'err', text: err?.message ?? 'Something went wrong' });
+    } finally {
+      setManualBusy(false);
+    }
+  };
 
   React.useEffect(() => {
     getEvent(id).then(setEvent).catch(console.error);
@@ -177,6 +209,46 @@ export function DoorCheckPage() {
               tap <span className="font-semibold">Check In</span> on this event,<br />
               then come back.
             </div>
+
+            <form onSubmit={handleManualCheckIn} className="mt-5 rounded-xl border border-slate-200 bg-white p-4 text-left">
+              <div className="mb-2 text-sm font-semibold text-slate-800">Or check them in manually</div>
+              <input
+                type="email"
+                value={manualEmail}
+                onChange={(e) => setManualEmail(e.target.value)}
+                placeholder="their@email.com"
+                className="mb-2 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                autoComplete="off"
+                required
+              />
+              <input
+                type="text"
+                value={manualName}
+                onChange={(e) => setManualName(e.target.value)}
+                placeholder="Full name (only needed if they have no account)"
+                className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                autoComplete="off"
+              />
+              <button
+                type="submit"
+                disabled={manualBusy || !manualEmail.trim()}
+                className="w-full rounded-lg bg-slate-900 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {manualBusy ? 'Checking in…' : 'Check them in'}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {manualMsg && (
+          <div
+            className={`mt-3 rounded-xl px-4 py-3 text-sm font-medium ${
+              manualMsg.kind === 'ok'
+                ? 'border border-green-200 bg-green-50 text-green-700'
+                : 'border border-red-200 bg-red-50 text-red-700'
+            }`}
+          >
+            {manualMsg.text}
           </div>
         )}
       </div>

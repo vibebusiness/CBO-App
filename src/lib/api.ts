@@ -179,6 +179,17 @@ export async function getCheckIns(eventId: string): Promise<CheckIn[]> {
   return request(`/events/${eventId}/checkins`);
 }
 
+export async function adminManualCheckIn(
+  eventId: string,
+  email: string,
+  fullName?: string
+): Promise<{ ok: boolean; created_account: boolean; already_checked_in: boolean; user: { id: string; email: string; full_name: string | null } }> {
+  return request(`/events/${eventId}/checkins/manual`, {
+    method: 'POST',
+    body: JSON.stringify({ email, fullName }),
+  });
+}
+
 export async function checkIn(eventId: string): Promise<CheckIn | { already_checked_in: boolean }> {
   return request(`/events/${eventId}/checkins`, { method: 'POST' });
 }
