@@ -6,7 +6,8 @@ import type { Event, CheckIn, NetworkingCurrent, EventFeedback } from '../types/
 import { useAuth } from '../state/auth';
 import { fmtET } from '../lib/tz';
 
-const PATRICK_GOFUNDME_URL = 'https://www.gofundme.com/f/support-patricks-fight-against-cancer-zupv4';
+const PATRICK_GOFUNDME_URL =
+  'https://www.gofundme.com/f/help-patrick-fight-terminal-liver-cancer?attribution_id=sl%3A5fd91e33-2c3d-4cbb-ae6c-0f691c957564&ts=1785857853&video_sharing=enabled';
 
 function isCheckInOpen(event: Event): boolean {
   const now = new Date();
@@ -435,7 +436,7 @@ export function EventDetailPage() {
               Support Patrick and his family
             </h2>
             <p className="mt-1.5 text-sm leading-6 text-slate-600">
-              Patrick Moreau is facing a serious cancer diagnosis. If you&apos;re able, please consider
+              Patrick Yang is facing a serious cancer diagnosis. If you&apos;re able, please consider
               contributing to help with medical costs, travel, and family care.
             </p>
           </div>
@@ -444,7 +445,7 @@ export function EventDetailPage() {
           href={PATRICK_GOFUNDME_URL}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label="Support Patrick Moreau on GoFundMe (opens in a new tab)"
+          aria-label="Support Patrick Yang on GoFundMe (opens in a new tab)"
           className="mt-4 flex min-h-11 w-full items-center justify-center rounded-xl bg-rose-700 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-rose-800 focus:outline-none focus:ring-2 focus:ring-rose-600 focus:ring-offset-2"
         >
           Support Patrick on GoFundMe <span aria-hidden="true" className="ml-1.5">↗</span>
