@@ -6,7 +6,6 @@ import type { Event, CheckIn, NetworkingCurrent, EventFeedback } from '../types/
 import { useAuth } from '../state/auth';
 import { fmtET } from '../lib/tz';
 
-const PATRICK_GOFUNDME_URL = 'https://www.gofundme.com/f/support-patricks-fight-against-cancer-zupv4';
 
 function isCheckInOpen(event: Event): boolean {
   const now = new Date();
@@ -417,39 +416,6 @@ export function EventDetailPage() {
           )}
         </div>
       </div>
-
-      {/* Community support */}
-      <section
-        aria-labelledby="support-patrick-heading"
-        className="mb-4 rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 via-white to-orange-50 p-5 shadow-sm"
-      >
-        <div className="flex items-start gap-3">
-          <div
-            aria-hidden="true"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-100 text-lg text-rose-700"
-          >
-            ♥
-          </div>
-          <div className="min-w-0 flex-1">
-            <h2 id="support-patrick-heading" className="font-semibold text-slate-900">
-              Support Patrick and his family
-            </h2>
-            <p className="mt-1.5 text-sm leading-6 text-slate-600">
-              Patrick Yang is facing a serious cancer diagnosis. If you&apos;re able, please consider
-              contributing to help with medical costs, travel, and family care.
-            </p>
-          </div>
-        </div>
-        <a
-          href={PATRICK_GOFUNDME_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="Support Patrick Yang on GoFundMe (opens in a new tab)"
-          className="mt-4 flex min-h-11 w-full items-center justify-center rounded-xl bg-rose-700 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-rose-800 focus:outline-none focus:ring-2 focus:ring-rose-600 focus:ring-offset-2"
-        >
-          Support Patrick on GoFundMe <span aria-hidden="true" className="ml-1.5">↗</span>
-        </a>
-      </section>
 
       {/* Check-in */}
       <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
