@@ -1,8 +1,8 @@
 import React from 'react';
-import { isAfter, addHours } from 'date-fns';
 import { Link } from 'wouter';
 import { getEvents } from '../lib/api';
 import type { Event } from '../types/models';
+import { selectEventFeed } from '../lib/events';
 import { fmtET } from '../lib/tz';
 
 function EventCard({ event }: { event: Event }) {
@@ -65,16 +65,42 @@ function EventCard({ event }: { event: Event }) {
 export function EventsPage() {
   const [events, setEvents] = React.useState<Event[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    getEvents().then((rows) => {
+  const loadEvents = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const rows = await getEvents();
       setEvents(rows);
+    } catch {
+      setError('We could not load the events. Please try again.');
+    } finally {
       setLoading(false);
-    });
+    }
   }, []);
 
-  const upcoming = events.filter((e) => isAfter(addHours(new Date(e.start_at), 6), new Date()));
-  const past = events.filter((e) => !isAfter(addHours(new Date(e.start_at), 6), new Date()));
+  React.useEffect(() => {
+    void loadEvents();
+  }, [loadEvents]);
+
+  const { today, past } = React.useMemo(() => selectEventFeed(events), [events]);
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm" role="alert">
+        <p className="text-sm text-slate-500">{error}</p>
+        <button
+          type="button"
+          onClick={() => void loadEvents()}
+          className="mt-4 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -86,25 +112,28 @@ export function EventsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-base font-semibold text-slate-900">Upcoming Events</h1>
+      <h1 className="text-base font-semibold text-slate-900">Events</h1>
 
-      {upcoming.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-400 shadow-sm">
-          No upcoming events right now. Check back soon!
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {upcoming.map((e) => <EventCard key={e.id} event={e} />)}
-        </div>
+      {today.length > 0 && (
+        <section className="space-y-3" aria-labelledby="today-event-heading">
+          <h2 id="today-event-heading" className="text-sm font-medium text-slate-500">Today&apos;s event</h2>
+          {today.map((event) => <EventCard key={event.id} event={event} />)}
+        </section>
       )}
 
       {past.length > 0 && (
-        <>
-          <h2 className="pt-2 text-sm font-medium text-slate-400">Past events</h2>
+        <section className="space-y-3" aria-labelledby="past-events-heading">
+          <h2 id="past-events-heading" className="pt-2 text-sm font-medium text-slate-400">Past events</h2>
           <div className="space-y-3">
-            {past.map((e) => <EventCard key={e.id} event={e} />)}
+            {past.map((event) => <EventCard key={event.id} event={event} />)}
           </div>
-        </>
+        </section>
+      )}
+
+      {today.length === 0 && past.length === 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-400 shadow-sm">
+          No current or past events yet.
+        </div>
       )}
     </div>
   );

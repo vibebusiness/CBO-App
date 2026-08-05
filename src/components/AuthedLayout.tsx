@@ -58,8 +58,8 @@ export function AuthedLayout({ children }: { children: React.ReactNode }) {
       {/* Bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 border-t border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-md items-center justify-around px-2 py-1">
-          <NavLink href="/calendar" label="Calendar" icon="📅" />
           <NavLink href="/events" label="Events" icon="🎟️" />
+          <NavLink href="/calendar" label="Calendar" icon="📅" />
           <NavLink href="/profile" label="Profile" icon="👤" />
           {user?.role === 'admin' && (
             <NavLink href="/admin" label="Admin" icon="⚙️" />

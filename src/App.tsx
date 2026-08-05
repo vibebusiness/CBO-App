@@ -96,7 +96,7 @@ function AuthedApp() {
           {user.role === 'admin' ? <AdminPage /> : <Redirect to="/events" />}
         </Route>
         <Route>
-          <Redirect to="/calendar" />
+          <Redirect to="/events" />
         </Route>
       </Switch>
     </AuthedLayout>
@@ -117,13 +117,13 @@ export default function App() {
   return (
     <Switch>
       <Route path="/">
-        {user ? <Redirect to="/calendar" /> : <AuthPage />}
+        {user ? <Redirect to="/events" /> : <AuthPage />}
       </Route>
       <Route path="/auth">
-        {user ? <Redirect to="/calendar" /> : <AuthPage />}
+        {user ? <Redirect to="/events" /> : <AuthPage />}
       </Route>
       <Route path="/signup">
-        {user ? <Redirect to="/calendar" /> : <AuthPage />}
+        {user ? <Redirect to="/events" /> : <AuthPage />}
       </Route>
       <Route path="/reset-password" component={ResetPasswordPage} />
       <Route>
