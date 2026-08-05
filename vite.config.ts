@@ -1,11 +1,13 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { cloudflare } from '@cloudflare/vite-plugin'
 import { VitePWA } from 'vite-plugin-pwa'
+import { sites } from './build/sites-vite-plugin'
 
 export default defineConfig({
-  plugins: [
-    react(),
-    VitePWA({
+    plugins: [
+      react(),
+      VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'cbo-logo.png', 'icons/*.png'],
       manifest: {
@@ -65,27 +67,40 @@ export default defineConfig({
           },
         ],
       },
-    }),
-  ],
-  server: {
-    host: '0.0.0.0',
-    port: 5000,
-    allowedHosts: true,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-        timeout: 60000,
-        proxyTimeout: 60000,
-      },
-      '/uploads': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-      },
-      '/avatars': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
+      }),
+      sites(),
+      cloudflare({
+        viteEnvironment: { name: 'server' },
+        config: {
+          name: 'server',
+          main: './worker/index.ts',
+          compatibility_date: '2026-08-04',
+          assets: {
+            binding: 'ASSETS',
+            not_found_handling: 'single-page-application',
+          },
+        },
+      }),
+    ],
+    server: {
+      host: '0.0.0.0',
+      port: 5000,
+      allowedHosts: true,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3001',
+          changeOrigin: true,
+          timeout: 60000,
+          proxyTimeout: 60000,
+        },
+        '/uploads': {
+          target: 'http://localhost:3001',
+          changeOrigin: true,
+        },
+        '/avatars': {
+          target: 'http://localhost:3001',
+          changeOrigin: true,
+        },
       },
     },
-  },
 })
