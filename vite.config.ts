@@ -9,6 +9,7 @@ export default defineConfig({
       react(),
       VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: false,
       includeAssets: ['favicon.svg', 'cbo-logo.png', 'icons/*.png'],
       manifest: {
         name: 'CBO Events',
@@ -40,28 +41,19 @@ export default defineConfig({
         ],
       },
       workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
-            urlPattern: /^\/uploads\/.*/i,
+            urlPattern: ({ url }) => url.pathname.startsWith('/uploads/') || url.pathname.startsWith('/avatars/'),
             handler: 'CacheFirst',
             options: {
               cacheName: 'event-images',
               expiration: {
                 maxEntries: 60,
                 maxAgeSeconds: 60 * 60 * 24 * 30,
-              },
-            },
-          },
-          {
-            urlPattern: /^\/api\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              networkTimeoutSeconds: 10,
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 5,
               },
             },
           },
@@ -74,7 +66,7 @@ export default defineConfig({
         config: {
           name: 'server',
           main: './worker/index.ts',
-          compatibility_date: '2026-08-04',
+          compatibility_date: '2026-05-22',
           assets: {
             binding: 'ASSETS',
             not_found_handling: 'single-page-application',

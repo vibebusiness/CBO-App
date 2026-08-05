@@ -1,17 +1,40 @@
 import type { Event, CheckIn, NetworkingRound, NetworkingCurrent, EventFeedback } from '../types/models';
 
 const BASE = '/api';
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 8_000;
+
+class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
 
 export function getToken(): string | null {
-  return localStorage.getItem('cbo_token');
+  try {
+    return localStorage.getItem('cbo_token');
+  } catch {
+    return null;
+  }
 }
 
 export function setToken(token: string) {
-  localStorage.setItem('cbo_token', token);
+  try {
+    localStorage.setItem('cbo_token', token);
+  } catch {
+    throw new Error('This browser is blocking sign-in storage. Check its privacy settings and try again.');
+  }
 }
 
 export function clearToken() {
-  localStorage.removeItem('cbo_token');
+  try {
+    localStorage.removeItem('cbo_token');
+  } catch {
+    // Storage can be unavailable in private or restricted mobile browser modes.
+  }
 }
 
 function authHeaders(): Record<string, string> {
@@ -30,9 +53,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     data = JSON.parse(text);
   } catch {
     console.error(`[api] non-JSON from ${init?.method ?? 'GET'} ${path} (${res.status}):`, text.slice(0, 300));
-    throw new Error(`Server error (${res.status}) on ${path}`);
+    throw new ApiError(`Server error (${res.status}) on ${path}`, res.status);
   }
-  if (!res.ok) throw new Error((data as Record<string, string>).error ?? 'Request failed');
+  if (!res.ok) {
+    throw new ApiError((data as Record<string, string>).error ?? 'Request failed', res.status);
+  }
   return data as T;
 }
 
@@ -65,12 +90,25 @@ export async function signIn(email: string, password: string) {
 }
 
 export async function getMe(): Promise<AppUser | null> {
-  if (!getToken()) return null;
+  const token = getToken();
+  if (!token) return null;
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), AUTH_BOOTSTRAP_TIMEOUT_MS);
+
   try {
-    return await request<AppUser>('/auth/me');
-  } catch {
-    clearToken();
-    return null;
+    return await request<AppUser>('/auth/me', { signal: controller.signal });
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 404)) {
+      clearToken();
+      return null;
+    }
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('CBO took too long to respond.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
   }
 }
 
