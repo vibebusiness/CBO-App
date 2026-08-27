@@ -6,7 +6,6 @@ import {
   getCheckIns,
   checkIn,
   getNetworkingCurrent,
-  getToken,
   getMyFeedback,
   submitFeedback,
   updateProfile,
@@ -336,11 +335,7 @@ export function EventDetailPage() {
   // SSE: instantly update when admin runs a new round
   React.useEffect(() => {
     if (!myCheckin || !event?.has_networking || !id) return;
-    const token = getToken();
-    if (!token) return;
-    const es = new EventSource(
-      `/api/events/${id}/networking/stream?token=${encodeURIComponent(token)}`,
-    );
+    const es = new EventSource(`/api/events/${id}/networking/stream`);
     es.onmessage = () => {
       loadNetworkingGroup();
     };

@@ -46,7 +46,11 @@ function authHeaders(): Record<string, string> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { ...init, headers: authHeaders() });
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    credentials: 'same-origin',
+    headers: { ...authHeaders(), ...init?.headers },
+  });
   const text = await res.text();
   let data: unknown;
   try {
@@ -90,9 +94,6 @@ export async function signIn(email: string, password: string) {
 }
 
 export async function getMe(): Promise<AppUser | null> {
-  const token = getToken();
-  if (!token) return null;
-
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), AUTH_BOOTSTRAP_TIMEOUT_MS);
 
@@ -110,6 +111,15 @@ export async function getMe(): Promise<AppUser | null> {
   } finally {
     window.clearTimeout(timeout);
   }
+}
+
+export async function signOutSession(): Promise<void> {
+  await fetch('/api/auth/signout', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: authHeaders(),
+  });
+  clearToken();
 }
 
 // Profile
@@ -130,6 +140,7 @@ export async function uploadAvatar(file: File): Promise<string> {
   form.append('avatar', file);
   const res = await fetch('/api/profile/avatar', {
     method: 'POST',
+    credentials: 'same-origin',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: form,
   });
@@ -145,6 +156,7 @@ export async function uploadImage(file: File): Promise<string> {
   form.append('image', file);
   const res = await fetch('/api/upload', {
     method: 'POST',
+    credentials: 'same-origin',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: form,
   });
@@ -341,6 +353,7 @@ export async function verifyInviteToken(token: string): Promise<{ valid: boolean
 export async function forgotPassword(email: string): Promise<{ ok: boolean; exists?: boolean }> {
   const res = await fetch('/api/auth/forgot-password', {
     method: 'POST',
+    credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
   });
@@ -358,6 +371,7 @@ export async function validateResetToken(token: string): Promise<{ valid: boolea
 export async function resetPassword(token: string, password: string): Promise<{ ok: boolean }> {
   const res = await fetch('/api/auth/reset-password', {
     method: 'POST',
+    credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token, password }),
   });

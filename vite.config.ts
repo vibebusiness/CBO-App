@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { cloudflare } from '@cloudflare/vite-plugin'
 import { VitePWA } from 'vite-plugin-pwa'
-import { sites } from './build/sites-vite-plugin'
+import { sites } from './build/sites-vite-plugin.ts'
 
 export default defineConfig({
     plugins: [
@@ -44,8 +44,21 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Never precache HTML. Navigations must check the network so an old
+        // document cannot point at JavaScript chunks removed by a deployment.
+        globPatterns: ['assets/index-*.{js,css}', '**/*.{ico,svg,woff2}'],
+        navigateFallback: null,
         runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'cbo-pages-v2',
+              networkTimeoutSeconds: 5,
+              cacheableResponse: { statuses: [200] },
+              expiration: { maxEntries: 8, maxAgeSeconds: 60 * 60 * 24 },
+            },
+          },
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/uploads/') || url.pathname.startsWith('/avatars/'),
             handler: 'CacheFirst',

@@ -23,6 +23,7 @@ export type Event = {
   status: 'published' | 'draft';
   created_by: string;
   created_at: string;
+  checked_in?: boolean;
 };
 
 export type NetworkingRound = {

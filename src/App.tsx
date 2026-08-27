@@ -1,17 +1,19 @@
+import React from 'react';
 import { Route, Switch, Redirect, useRoute } from 'wouter';
 import { AuthedLayout } from './components/AuthedLayout';
-import { AuthPage } from './pages/Auth';
-import { SetupPage } from './pages/Setup';
-import { CalendarPage } from './pages/Calendar';
-import { EventsPage } from './pages/Events';
-import { EventDetailPage } from './pages/EventDetail';
-import { EventAttendeesPage } from './pages/EventAttendees';
-import { ProfilePage } from './pages/Profile';
-import { AdminPage } from './pages/Admin';
-import { AdminEventEditPage } from './pages/AdminEventEdit';
-import { DoorCheckPage } from './pages/DoorCheck';
-import { ResetPasswordPage } from './pages/ResetPassword';
 import { useAuth } from './state/auth';
+
+const AuthPage = React.lazy(() => import('./pages/Auth').then((module) => ({ default: module.AuthPage })));
+const SetupPage = React.lazy(() => import('./pages/Setup').then((module) => ({ default: module.SetupPage })));
+const CalendarPage = React.lazy(() => import('./pages/Calendar').then((module) => ({ default: module.CalendarPage })));
+const EventsPage = React.lazy(() => import('./pages/Events').then((module) => ({ default: module.EventsPage })));
+const EventDetailPage = React.lazy(() => import('./pages/EventDetail').then((module) => ({ default: module.EventDetailPage })));
+const EventAttendeesPage = React.lazy(() => import('./pages/EventAttendees').then((module) => ({ default: module.EventAttendeesPage })));
+const ProfilePage = React.lazy(() => import('./pages/Profile').then((module) => ({ default: module.ProfilePage })));
+const AdminPage = React.lazy(() => import('./pages/Admin').then((module) => ({ default: module.AdminPage })));
+const AdminEventEditPage = React.lazy(() => import('./pages/AdminEventEdit').then((module) => ({ default: module.AdminEventEditPage })));
+const DoorCheckPage = React.lazy(() => import('./pages/DoorCheck').then((module) => ({ default: module.DoorCheckPage })));
+const ResetPasswordPage = React.lazy(() => import('./pages/ResetPassword').then((module) => ({ default: module.ResetPasswordPage })));
 
 function StartupScreen({
   error,
@@ -115,20 +117,22 @@ export default function App() {
   }
 
   return (
-    <Switch>
-      <Route path="/">
-        {user ? <Redirect to="/events" /> : <AuthPage />}
-      </Route>
-      <Route path="/auth">
-        {user ? <Redirect to="/events" /> : <AuthPage />}
-      </Route>
-      <Route path="/signup">
-        {user ? <Redirect to="/events" /> : <AuthPage />}
-      </Route>
-      <Route path="/reset-password" component={ResetPasswordPage} />
-      <Route>
-        {user ? <AuthedApp /> : <Redirect to="/" />}
-      </Route>
-    </Switch>
+    <React.Suspense fallback={<StartupScreen />}>
+      <Switch>
+        <Route path="/">
+          {user ? <Redirect to="/events" /> : <AuthPage />}
+        </Route>
+        <Route path="/auth">
+          {user ? <Redirect to="/events" /> : <AuthPage />}
+        </Route>
+        <Route path="/signup">
+          {user ? <Redirect to="/events" /> : <AuthPage />}
+        </Route>
+        <Route path="/reset-password" component={ResetPasswordPage} />
+        <Route>
+          {user ? <AuthedApp /> : <Redirect to="/" />}
+        </Route>
+      </Switch>
+    </React.Suspense>
   );
 }

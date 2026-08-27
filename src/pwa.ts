@@ -19,6 +19,7 @@ function reloadForUpdate() {
 }
 
 registerSW({
+  immediate: true,
   onNeedReload: reloadForUpdate,
   onRegisteredSW(_serviceWorkerUrl, registration) {
     if (!registration) return;
@@ -30,6 +31,8 @@ registerSW({
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') void registration.update();
     });
+
+    void registration.update();
   },
   onRegisterError(error) {
     console.error('CBO offline support could not start:', error);

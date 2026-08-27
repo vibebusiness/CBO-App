@@ -59,6 +59,11 @@
             showLoadError();
           }
         }, true);
+
+        window.setTimeout(() => {
+          const root = document.getElementById('root');
+          if (root?.querySelector('.cbo-boot')) showLoadError();
+        }, 12000);
       })();
     </script>
   </head>

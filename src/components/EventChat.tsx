@@ -13,7 +13,9 @@ import { fmtET } from '../lib/tz';
 /** Run `cb` on an interval, paused while the tab is hidden. */
 function usePolling(cb: () => void, ms: number, active: boolean) {
   const saved = React.useRef(cb);
-  saved.current = cb;
+  React.useEffect(() => {
+    saved.current = cb;
+  }, [cb]);
   React.useEffect(() => {
     if (!active) return;
     const tick = () => {

@@ -7,24 +7,26 @@ interface BeforeInstallPromptEvent extends Event {
 
 const DISMISSED_KEY = 'cbo_install_dismissed';
 
+function isInstalled() {
+  return window.matchMedia('(display-mode: standalone)').matches
+    || ('standalone' in navigator && (navigator as { standalone?: boolean }).standalone === true);
+}
+
+function shouldShowIosInstructions() {
+  return !localStorage.getItem(DISMISSED_KEY)
+    && !isInstalled()
+    && /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+
 export function InstallBanner() {
   const [prompt, setPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [showIos, setShowIos] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
+  const [showIos, setShowIos] = useState(shouldShowIosInstructions);
+  const [dismissed, setDismissed] = useState(() => Boolean(localStorage.getItem(DISMISSED_KEY)));
 
   useEffect(() => {
     if (localStorage.getItem(DISMISSED_KEY)) return;
 
-    const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
-      || ('standalone' in navigator && (navigator as { standalone?: boolean }).standalone === true);
-
-    if (isStandalone) return;
-
-    if (isIos) {
-      setShowIos(true);
-      return;
-    }
+    if (isInstalled() || /iphone|ipad|ipod/i.test(navigator.userAgent)) return;
 
     const handler = (e: Event) => {
       e.preventDefault();

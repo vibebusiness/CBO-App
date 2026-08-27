@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { updateProfile } from '../lib/api';
 import { useAuth } from '../state/auth';
-import { INDUSTRIES } from './Profile';
+import { INDUSTRIES } from '../lib/industries';
 
 const schema = z.object({
   full_name: z.string().min(1, 'Your name is required'),
@@ -85,7 +85,9 @@ export function SetupPage() {
   return (
     <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-slate-900">
       <img
-        src="/charlotte-skyline.png"
+        src="/charlotte-skyline-clean.jpg"
+        width={1280}
+        height={853}
         alt=""
         aria-hidden
         className="absolute inset-0 h-full w-full object-cover object-right"

@@ -2,7 +2,7 @@ import React from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { signIn, signUp, setToken, forgotPassword } from '../lib/api';
+import { signIn, signUp, forgotPassword } from '../lib/api';
 import { useAuth } from '../state/auth';
 
 const schema = z.object({
@@ -47,12 +47,10 @@ export function AuthPage() {
     setMsg(null);
     try {
       if (mode === 'signup') {
-        const res = await signUp(values.email, values.password, inviteToken ?? undefined);
-        setToken(res.token);
+        await signUp(values.email, values.password, inviteToken ?? undefined);
         await refresh();
       } else {
-        const res = await signIn(values.email, values.password);
-        setToken(res.token);
+        await signIn(values.email, values.password);
         await refresh();
       }
     } catch (e: unknown) {
@@ -88,7 +86,10 @@ export function AuthPage() {
     <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-slate-900">
       {/* Charlotte skyline */}
       <img
-        src="/charlotte-skyline.png"
+        src="/charlotte-skyline-clean.jpg"
+        width={1280}
+        height={853}
+        fetchPriority="high"
         alt=""
         aria-hidden
         className="absolute inset-0 h-full w-full object-cover object-right"

@@ -5,33 +5,23 @@ import {
   isAfter, addHours,
 } from 'date-fns';
 import { Link } from 'wouter';
-import { getEvents, getCheckIns } from '../lib/api';
+import { getEvents } from '../lib/api';
 import type { Event } from '../types/models';
-import { useAuth } from '../state/auth';
 import { fmtET, toET } from '../lib/tz';
 
 export function CalendarPage() {
-  const { user } = useAuth();
   const [events, setEvents] = React.useState<Event[]>([]);
   const [month, setMonth] = React.useState(new Date());
   const [selected, setSelected] = React.useState<Date | null>(null);
-  const [checkedInIds, setCheckedInIds] = React.useState<Set<string>>(new Set());
 
   React.useEffect(() => {
     getEvents().then(setEvents);
   }, []);
 
-  React.useEffect(() => {
-    events.forEach(async (e) => {
-      try {
-        const rows = await getCheckIns(e.id);
-        if (Array.isArray(rows)) {
-          const mine = rows.find((c) => c.user_id === user?.id);
-          if (mine) setCheckedInIds((prev) => new Set([...prev, e.id]));
-        }
-      } catch { /* ignore */ }
-    });
-  }, [events, user?.id]);
+  const checkedInIds = React.useMemo(
+    () => new Set(events.filter((event) => event.checked_in).map((event) => event.id)),
+    [events],
+  );
 
   const days = eachDayOfInterval({ start: startOfMonth(month), end: endOfMonth(month) });
   const startPad = getDay(startOfMonth(month));

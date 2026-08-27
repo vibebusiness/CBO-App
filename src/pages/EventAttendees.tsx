@@ -109,7 +109,7 @@ export function EventAttendeesPage() {
       })
       .catch(() => navigate('/events'))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, navigate]);
 
   const grouped = React.useMemo(() => {
     const map = new Map<string, Attendee[]>();
@@ -129,7 +129,7 @@ export function EventAttendeesPage() {
     if (grouped.length > 0 && activeTab === null) {
       setActiveTab(grouped[0][0]);
     }
-  }, [grouped]);
+  }, [grouped, activeTab]);
 
   React.useEffect(() => {
     if (!activeTab || !tabBarRef.current) return;

@@ -7,6 +7,7 @@ import { updateProfile, uploadAvatar } from '../lib/api';
 import { resizeImageFile } from '../lib/image';
 import { useAuth } from '../state/auth';
 import { buildVCard, type VCardContact } from '../lib/vcard';
+import { INDUSTRIES } from '../lib/industries';
 
 const schema = z.object({
   full_name: z.string().min(1, 'Name is required'),
@@ -17,21 +18,6 @@ const schema = z.object({
 });
 
 type FormValues = z.infer<typeof schema>;
-
-export const INDUSTRIES = [
-  'Consulting',
-  'Finance & Accounting',
-  'Health & Wellness',
-  'Legal',
-  'Marketing & PR',
-  'Real Estate',
-  'Retail',
-  'Technology',
-  'Food & Beverage',
-  'Construction & Trades',
-  'Education',
-  'Non-profit',
-];
 
 function isCustomIndustry(val: string) {
   return val !== '' && !INDUSTRIES.includes(val);
@@ -235,14 +221,7 @@ function ContactQR({ contact }: { contact: VCardContact & { avatar_url?: string 
 
   const vcard = React.useMemo(
     () => buildVCard({ ...contact, photoBase64 }),
-    [
-      contact.full_name,
-      contact.email,
-      contact.phone,
-      contact.business_name,
-      contact.tagline,
-      photoBase64,
-    ]
+    [contact, photoBase64]
   );
 
   React.useEffect(() => {

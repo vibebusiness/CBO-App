@@ -76,13 +76,8 @@ exposeLocalhost = true
 deploymentTarget = "autoscale"
 build = ["npm", "run", "build"]
 publicDir = "dist/client"
-run = ["node", "server/index.js"]
+run = ["npm", "run", "start"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 60000
-
-[userenv]
-
-[userenv.shared]
-JWT_SECRET = "cbo-jwt-secret-akgjlviexi8"

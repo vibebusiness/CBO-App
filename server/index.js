@@ -1,7 +1,5 @@
 import express from 'express';
-import pg from 'pg';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import multer from 'multer';
 import path from 'path';
@@ -9,6 +7,24 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import OpenAI from 'openai';
 import { fromZonedTime } from 'date-fns-tz';
+import compression from 'compression';
+import helmet from 'helmet';
+import { rateLimit } from 'express-rate-limit';
+import { config } from './config.js';
+import { databaseIsReady, pool } from './db.js';
+import {
+  adminOnly,
+  clearSession,
+  createAuthMiddleware,
+  makeToken,
+  normalizeEvent,
+  parseCookies,
+  requestContext,
+  sameOriginForCookieRequests,
+  sanitizeEventDescription,
+  setSession,
+  verifiedImageMime,
+} from './http.js';
 
 const ET = 'America/New_York';
 
@@ -25,10 +41,7 @@ function eventMessagingCutoff(startAt) {
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const { Pool } = pg;
 const app = express();
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 function getOpenAI() {
   if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY || !process.env.AI_INTEGRATIONS_OPENAI_BASE_URL) {
     throw new Error('AI integration not configured');
@@ -36,125 +49,61 @@ function getOpenAI() {
   return new OpenAI({
     apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
     baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    timeout: 20_000,
+    maxRetries: 1,
   });
 }
 
-app.use(express.json({ limit: '10mb' }));
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      baseUri: ["'self'"],
+      connectSrc: ["'self'", 'ws:', 'wss:'],
+      fontSrc: ["'self'", 'data:'],
+      frameAncestors: ["'none'"],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+      objectSrc: ["'none'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      workerSrc: ["'self'"],
+    },
+  },
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
+app.use(compression());
+app.use(express.json({ limit: '1mb' }));
+app.use(parseCookies);
+app.use(requestContext);
+app.use(sameOriginForCookieRequests);
 
-// Request logger — helps debug routing issues
-app.use((req, _res, next) => {
-  if (req.path.startsWith('/api')) console.log(`[API] ${req.method} ${req.path}`);
-  next();
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  limit: 30,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please wait a few minutes and try again.' },
 });
+const aiLimiter = rateLimit({
+  windowMs: 10 * 60 * 1_000,
+  limit: 20,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'AI is receiving too many requests. Please try again shortly.' },
+});
+const authMiddleware = createAuthMiddleware(pool);
 
-// Create event_images table on startup so images persist in PostgreSQL across deployments
-pool.query(`
-  CREATE TABLE IF NOT EXISTS event_images (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    data bytea NOT NULL,
-    mime_type varchar(64) NOT NULL,
-    created_at timestamptz DEFAULT now()
-  )
-`).catch((e) => console.error('event_images table init failed:', e));
-
-// Add has_networking column to events (idempotent)
-pool.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS has_networking boolean DEFAULT false`)
-  .catch((e) => console.error('has_networking column init failed:', e));
-
-// Create networking tables
-pool.query(`
-  CREATE TABLE IF NOT EXISTS networking_rounds (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_id uuid NOT NULL,
-    round_number int NOT NULL,
-    group_size int NOT NULL DEFAULT 5,
-    created_at timestamptz DEFAULT now()
-  )
-`).catch((e) => console.error('networking_rounds table init failed:', e));
-
-pool.query(`
-  CREATE TABLE IF NOT EXISTS networking_assignments (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    round_id uuid NOT NULL,
-    user_id uuid NOT NULL,
-    group_label varchar(4) NOT NULL,
-    created_at timestamptz DEFAULT now()
-  )
-`).catch((e) => console.error('networking_assignments table init failed:', e));
-
-// Add tagline column to users
-pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS tagline varchar(120)`)
-  .catch((e) => console.error('tagline column init failed:', e));
-
-// user_avatars — headshots stored in PostgreSQL (upserted per user)
-pool.query(`
-  CREATE TABLE IF NOT EXISTS user_avatars (
-    user_id uuid PRIMARY KEY,
-    data bytea NOT NULL,
-    mime_type varchar(64) NOT NULL,
-    updated_at timestamptz DEFAULT now()
-  )
-`).catch((e) => console.error('user_avatars table init failed:', e));
-
-// Add avatar_url to users
-pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url varchar(255)`)
-  .catch((e) => console.error('avatar_url column init failed:', e));
-
-// event_conversations — one chat thread per pair of members per event.
-// participant_a/participant_b store the pair sorted (a < b) so the unique
-// constraint dedupes regardless of who started it.
-pool.query(`
-  CREATE TABLE IF NOT EXISTS event_conversations (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_id uuid NOT NULL,
-    participant_a uuid NOT NULL,
-    participant_b uuid NOT NULL,
-    initiator_id uuid NOT NULL,
-    a_last_read_at timestamptz DEFAULT now(),
-    b_last_read_at timestamptz DEFAULT now(),
-    created_at timestamptz DEFAULT now(),
-    UNIQUE(event_id, participant_a, participant_b)
-  )
-`).catch((e) => console.error('event_conversations table init failed:', e));
-
-pool.query(`
-  CREATE TABLE IF NOT EXISTS event_messages (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    conversation_id uuid NOT NULL,
-    sender_id uuid NOT NULL,
-    body text NOT NULL,
-    sent_at timestamptz DEFAULT now()
-  )
-`)
-  .then(() => pool.query(`CREATE INDEX IF NOT EXISTS idx_event_messages_conv ON event_messages (conversation_id, sent_at)`))
-  .catch((e) => console.error('event_messages table/index init failed:', e));
-
-// Create event_feedback table
-pool.query(`
-  CREATE TABLE IF NOT EXISTS event_feedback (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_id uuid NOT NULL,
-    user_id uuid NOT NULL,
-    enjoyment_rating int NOT NULL,
-    event_size_preference varchar(10),
-    one_change text,
-    additional_feedback text,
-    created_at timestamptz DEFAULT now(),
-    UNIQUE(event_id, user_id)
-  )
-`).catch((e) => console.error('event_feedback table init failed:', e));
-
-// Create password_resets table for forgot-password flow
-pool.query(`
-  CREATE TABLE IF NOT EXISTS password_resets (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id uuid NOT NULL,
-    token varchar(128) NOT NULL UNIQUE,
-    expires_at timestamptz NOT NULL,
-    used_at timestamptz,
-    created_at timestamptz DEFAULT now()
-  )
-`).catch((e) => console.error('password_resets table init failed:', e));
+app.get('/health/live', (_req, res) => res.json({ ok: true }));
+app.get('/health/ready', async (_req, res) => {
+  try {
+    await databaseIsReady();
+    res.json({ ok: true });
+  } catch {
+    res.status(503).json({ ok: false });
+  }
+});
 
 // ── SSE — networking live updates ─────────────────────────────────────────
 const networkingSseClients = new Map(); // eventId → Set<res>
@@ -171,14 +120,6 @@ function broadcastNetworkingUpdate(eventId, payload) {
     }
   }
 }
-
-// Prevent a stale SSE socket from crashing the whole server
-process.on('uncaughtException', (err) => {
-  console.error('[server] uncaughtException (suppressed):', err.message);
-});
-process.on('unhandledRejection', (reason) => {
-  console.error('[server] unhandledRejection (suppressed):', reason);
-});
 
 // Assign attendees to groups minimising repeat pairings (50-attempt greedy shuffle)
 function buildNetworkingGroups(userIds, groupSize, pastAssignments) {
@@ -315,11 +256,12 @@ async function sendGhlPasswordResetEmail(toEmail, resetLink) {
 // Serve user avatar headshots
 app.get('/avatars/:userId', async (req, res) => {
   try {
-    const result = await pool.query('SELECT data, mime_type FROM user_avatars WHERE user_id = $1', [req.params.userId]);
+    const result = await pool.query('SELECT data, mime_type, updated_at FROM user_avatars WHERE user_id = $1', [req.params.userId]);
     if (!result.rows.length) return res.status(404).send('Not found');
-    const { data, mime_type } = result.rows[0];
+    const { data, mime_type, updated_at } = result.rows[0];
     res.setHeader('Content-Type', mime_type);
-    res.setHeader('Cache-Control', 'public, max-age=604800');
+    res.setHeader('Cache-Control', 'public, no-cache');
+    res.setHeader('ETag', `"avatar-${req.params.userId}-${new Date(updated_at).getTime()}"`);
     res.send(data);
   } catch (e) {
     console.error('Avatar serve error:', e);
@@ -347,39 +289,21 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) cb(null, true);
+    if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) cb(null, true);
     else cb(new Error('Only image files are allowed'));
   },
 });
-
-function makeToken(user) {
-  return jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
-}
-
-function authMiddleware(req, res, next) {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
-  try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
-  } catch {
-    res.status(401).json({ error: 'Invalid token' });
-  }
-}
-
-function adminOnly(req, res, next) {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
-  next();
-}
 
 // ── Image upload ──────────────────────────────────────────────────────────
 
 app.post('/api/upload', authMiddleware, adminOnly, upload.single('image'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const mimeType = verifiedImageMime(req.file);
+  if (!mimeType) return res.status(400).json({ error: 'The uploaded file is not a supported image' });
   try {
     const result = await pool.query(
       'INSERT INTO event_images (data, mime_type) VALUES ($1, $2) RETURNING id',
-      [req.file.buffer, req.file.mimetype]
+      [req.file.buffer, mimeType]
     );
     res.json({ url: `/uploads/${result.rows[0].id}` });
   } catch (e) {
@@ -392,12 +316,14 @@ app.post('/api/upload', authMiddleware, adminOnly, upload.single('image'), async
 
 app.post('/api/profile/avatar', authMiddleware, upload.single('avatar'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const mimeType = verifiedImageMime(req.file);
+  if (!mimeType) return res.status(400).json({ error: 'The uploaded file is not a supported image' });
   try {
     await pool.query(
       `INSERT INTO user_avatars (user_id, data, mime_type, updated_at)
        VALUES ($1, $2, $3, NOW())
        ON CONFLICT (user_id) DO UPDATE SET data = $2, mime_type = $3, updated_at = NOW()`,
-      [req.user.id, req.file.buffer, req.file.mimetype]
+      [req.user.id, req.file.buffer, mimeType]
     );
     const avatarUrl = `/avatars/${req.user.id}`;
     await pool.query('UPDATE users SET avatar_url = $1 WHERE id = $2', [avatarUrl, req.user.id]);
@@ -410,42 +336,55 @@ app.post('/api/profile/avatar', authMiddleware, upload.single('avatar'), async (
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 
-app.post('/api/auth/signup', async (req, res) => {
+app.post('/api/auth/signup', authLimiter, async (req, res) => {
   const { email, password, inviteToken } = req.body || {};
-  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+  if (typeof email !== 'string' || typeof password !== 'string') return res.status(400).json({ error: 'Email and password required' });
+  if (!EMAIL_RE.test(email.trim())) return res.status(400).json({ error: 'Enter a valid email address' });
+  if (password.length < 8 || password.length > 128) return res.status(400).json({ error: 'Password must be 8 to 128 characters' });
+  const client = await pool.connect();
   try {
     const hash = await bcrypt.hash(password, 10);
     let role = 'member';
     let tokenRow = null;
-    const count = await pool.query('SELECT COUNT(*) FROM users');
+    await client.query('BEGIN');
+    // Serializes the first-account decision and one-time invite consumption.
+    await client.query('SELECT pg_advisory_xact_lock($1)', [20260827]);
+    const count = await client.query('SELECT COUNT(*) FROM users');
     if (parseInt(count.rows[0].count) === 0) {
       role = 'admin';
     } else if (inviteToken) {
-      const tkRes = await pool.query(
-        'SELECT * FROM invite_tokens WHERE token = $1 AND used_by IS NULL',
+      const tkRes = await client.query(
+        'SELECT * FROM invite_tokens WHERE token = $1 AND used_by IS NULL FOR UPDATE',
         [inviteToken]
       );
       if (tkRes.rows[0]) { role = 'admin'; tokenRow = tkRes.rows[0]; }
     }
-    const result = await pool.query(
+    const result = await client.query(
       'INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id, email, role, full_name, business_name, tagline, industry, phone, avatar_url, created_at',
       [email.toLowerCase().trim(), hash, role]
     );
     const user = result.rows[0];
     if (tokenRow) {
-      await pool.query('UPDATE invite_tokens SET used_by = $1, used_at = NOW() WHERE id = $2', [user.id, tokenRow.id]);
+      await client.query('UPDATE invite_tokens SET used_by = $1, used_at = NOW() WHERE id = $2', [user.id, tokenRow.id]);
     }
-    res.json({ token: makeToken(user), user });
+    await client.query('COMMIT');
+    const sessionToken = makeToken(user);
+    setSession(res, sessionToken);
+    res.json({ token: sessionToken, user });
   } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
     if (e.code === '23505') return res.status(400).json({ error: 'An account with that email already exists' });
     console.error(e);
     res.status(500).json({ error: 'Server error' });
+  } finally {
+    client.release();
   }
 });
 
-app.post('/api/auth/signin', async (req, res) => {
+app.post('/api/auth/signin', authLimiter, async (req, res) => {
   const { email, password } = req.body || {};
-  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+  if (typeof email !== 'string' || typeof password !== 'string') return res.status(400).json({ error: 'Email and password required' });
+  if (password.length > 128) return res.status(401).json({ error: 'Invalid email or password' });
   try {
     const result = await pool.query(
       'SELECT id, email, role, full_name, business_name, tagline, industry, phone, avatar_url, created_at, password_hash FROM users WHERE email = $1',
@@ -456,7 +395,9 @@ app.post('/api/auth/signin', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
     const { password_hash: _, ...safeUser } = user;
-    res.json({ token: makeToken(safeUser), user: safeUser });
+    const sessionToken = makeToken(safeUser);
+    setSession(res, sessionToken);
+    res.json({ token: sessionToken, user: safeUser });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Server error' });
@@ -477,9 +418,14 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
   }
 });
 
+app.post('/api/auth/signout', (_req, res) => {
+  clearSession(res);
+  res.status(204).end();
+});
+
 // POST /api/auth/forgot-password — generate token and send reset email via GHL
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-app.post('/api/auth/forgot-password', async (req, res) => {
+app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
   const { email } = req.body || {};
   if (!email || typeof email !== 'string' || !EMAIL_RE.test(email.trim())) {
     return res.status(400).json({ error: 'A valid email address is required' });
@@ -487,12 +433,9 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   const normalised = email.toLowerCase().trim();
   try {
     const userRes = await pool.query('SELECT id FROM users WHERE email = $1', [normalised]);
-    if (!userRes.rows[0]) {
-      console.info(`[forgot-password] no account for ${normalised}`);
-      return res.json({ ok: true, exists: false });
-    }
-    // Account exists — confirm to the client, then dispatch the reset email.
-    res.json({ ok: true, exists: true });
+    if (!userRes.rows[0]) return res.json({ ok: true });
+    // Always return the same response so this endpoint cannot enumerate members.
+    res.json({ ok: true });
     const userId = userRes.rows[0].id;
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
@@ -500,14 +443,13 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       'INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, $3)',
       [userId, token, expiresAt]
     );
-    const appUrl = process.env.APP_URL || 'https://cbo-app.replit.app';
-    const resetLink = `${appUrl}/reset-password?token=${token}`;
+    const resetLink = `${config.appUrl}/reset-password?token=${token}`;
     if (!process.env.GHL_API_KEY || !process.env.GHL_LOCATION_ID) {
       console.warn('[forgot-password] GHL_API_KEY or GHL_LOCATION_ID missing — reset email NOT sent');
       return;
     }
     await sendGhlPasswordResetEmail(normalised, resetLink);
-    console.info(`[forgot-password] reset email dispatched to ${normalised}`);
+    console.info('[forgot-password] reset email dispatched');
   } catch (e) {
     console.error('[forgot-password] error:', e);
     if (!res.headersSent) res.status(500).json({ error: 'Something went wrong. Please try again.' });
@@ -531,7 +473,7 @@ app.get('/api/auth/reset-password/validate', async (req, res) => {
 });
 
 // POST /api/auth/reset-password — consume token atomically and update password
-app.post('/api/auth/reset-password', async (req, res) => {
+app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
   const { token, password } = req.body || {};
   if (!token || !password) return res.status(400).json({ error: 'Token and password are required' });
   if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
@@ -588,11 +530,18 @@ app.patch('/api/profile', authMiddleware, async (req, res) => {
 app.get('/api/events', authMiddleware, async (req, res) => {
   try {
     const { all } = req.query;
-    const query = req.user.role === 'admin' && all === 'true'
-      ? 'SELECT * FROM events ORDER BY start_at ASC'
-      : "SELECT * FROM events WHERE status = 'published' ORDER BY start_at ASC";
-    const result = await pool.query(query);
-    res.json(result.rows);
+    const includeAll = req.user.role === 'admin' && all === 'true';
+    const result = await pool.query(
+      `SELECT e.*,
+              EXISTS (
+                SELECT 1 FROM checkins c WHERE c.event_id = e.id AND c.user_id = $1
+              ) AS checked_in
+       FROM events e
+       WHERE ($2::boolean OR e.status = 'published')
+       ORDER BY e.start_at ASC`,
+      [req.user.id, includeAll]
+    );
+    res.json(result.rows.map(normalizeEvent));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Server error' });
@@ -603,7 +552,7 @@ app.get('/api/events/:id', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM events WHERE id = $1', [req.params.id]);
     if (!result.rows[0]) return res.status(404).json({ error: 'Event not found' });
-    res.json(result.rows[0]);
+    res.json(normalizeEvent(result.rows[0]));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Server error' });
@@ -613,13 +562,14 @@ app.get('/api/events/:id', authMiddleware, async (req, res) => {
 app.post('/api/events', authMiddleware, adminOnly, async (req, res) => {
   const { title, description, start_at, end_at, location_name, location_address, status, image_url, has_raffle, has_networking } = req.body || {};
   if (!title || !start_at) return res.status(400).json({ error: 'Title and start time required' });
+  if (!['draft', 'published'].includes(status ?? 'draft')) return res.status(400).json({ error: 'Invalid event status' });
   try {
     const result = await pool.query(
       `INSERT INTO events (title, description, start_at, end_at, location_name, location_address, status, image_url, has_raffle, has_networking, created_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
-      [title, description ?? '', start_at, end_at ?? null, location_name ?? '', location_address ?? '', status ?? 'draft', image_url ?? null, has_raffle ?? false, has_networking ?? false, req.user.id]
+      [title.trim().slice(0, 300), sanitizeEventDescription(description), start_at, end_at ?? null, location_name?.trim().slice(0, 300) ?? '', location_address?.trim() ?? '', status ?? 'draft', image_url ?? null, has_raffle ?? false, has_networking ?? false, req.user.id]
     );
-    res.json(result.rows[0]);
+    res.json(normalizeEvent(result.rows[0]));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Server error' });
@@ -628,16 +578,18 @@ app.post('/api/events', authMiddleware, adminOnly, async (req, res) => {
 
 app.patch('/api/events/:id', authMiddleware, adminOnly, async (req, res) => {
   const { title, description, start_at, end_at, location_name, location_address, status, image_url, has_raffle, has_networking } = req.body || {};
+  if (!title?.trim() || !start_at) return res.status(400).json({ error: 'Title and start time required' });
+  if (!['draft', 'published'].includes(status)) return res.status(400).json({ error: 'Invalid event status' });
   try {
     const result = await pool.query(
       `UPDATE events SET title = $1, description = $2, start_at = $3, end_at = $4,
        location_name = $5, location_address = $6, status = $7, image_url = $8,
        has_raffle = $9, has_networking = $10
        WHERE id = $11 RETURNING *`,
-      [title, description, start_at, end_at ?? null, location_name, location_address, status, image_url ?? null, has_raffle ?? false, has_networking ?? false, req.params.id]
+      [title.trim().slice(0, 300), sanitizeEventDescription(description), start_at, end_at ?? null, location_name?.trim().slice(0, 300) ?? '', location_address?.trim() ?? '', status, image_url ?? null, has_raffle ?? false, has_networking ?? false, req.params.id]
     );
     if (!result.rows[0]) return res.status(404).json({ error: 'Event not found' });
-    res.json(result.rows[0]);
+    res.json(normalizeEvent(result.rows[0]));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Server error' });
@@ -702,11 +654,22 @@ app.post('/api/events/:id/raffle/winner', authMiddleware, adminOnly, async (req,
 // ── Networking Rounds ─────────────────────────────────────────────────────
 
 // SSE stream: members subscribe here; admin running a round pushes an update
-app.get('/api/events/:id/networking/stream', (req, res) => {
-  const token = req.query.token;
-  if (!token) return res.status(401).end();
-  try { jwt.verify(token, JWT_SECRET); } catch { return res.status(401).end(); }
+app.get('/api/events/:id/networking/stream', authMiddleware, async (req, res) => {
   const eventId = req.params.id;
+  try {
+    const allowed = await pool.query(
+      `SELECT 1 FROM events e
+       WHERE e.id = $1 AND (
+         $2::boolean OR EXISTS (
+           SELECT 1 FROM checkins c WHERE c.event_id = e.id AND c.user_id = $3
+         )
+       )`,
+      [eventId, req.user.role === 'admin', req.user.id]
+    );
+    if (!allowed.rows[0]) return res.status(403).end();
+  } catch {
+    return res.status(500).end();
+  }
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -947,13 +910,39 @@ app.get('/api/events/:id/feedback', authMiddleware, adminOnly, async (req, res) 
 });
 
 app.delete('/api/events/:id', authMiddleware, adminOnly, async (req, res) => {
+  const client = await pool.connect();
   try {
-    await pool.query('DELETE FROM checkins WHERE event_id = $1', [req.params.id]);
-    await pool.query('DELETE FROM events WHERE id = $1', [req.params.id]);
+    await client.query('BEGIN');
+    await client.query(
+      `DELETE FROM event_messages WHERE conversation_id IN (
+         SELECT id FROM event_conversations WHERE event_id = $1
+       )`,
+      [req.params.id]
+    );
+    await client.query('DELETE FROM event_conversations WHERE event_id = $1', [req.params.id]);
+    await client.query(
+      `DELETE FROM networking_assignments WHERE round_id IN (
+         SELECT id FROM networking_rounds WHERE event_id = $1
+       )`,
+      [req.params.id]
+    );
+    await client.query('DELETE FROM networking_rounds WHERE event_id = $1', [req.params.id]);
+    await client.query('DELETE FROM event_feedback WHERE event_id = $1', [req.params.id]);
+    await client.query('DELETE FROM raffle_winners WHERE event_id = $1', [req.params.id]);
+    await client.query('DELETE FROM checkins WHERE event_id = $1', [req.params.id]);
+    const result = await client.query('DELETE FROM events WHERE id = $1 RETURNING id', [req.params.id]);
+    if (!result.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    await client.query('COMMIT');
     res.json({ ok: true });
   } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error(e);
     res.status(500).json({ error: 'Server error' });
+  } finally {
+    client.release();
   }
 });
 
@@ -1244,7 +1233,7 @@ app.post('/api/conversations/:id/messages', authMiddleware, async (req, res) => 
 
 // AI-drafted icebreaker for a recipient. Fails soft — returns an empty draft
 // rather than an error so the sender can always write their own.
-app.post('/api/events/:eventId/connections/ai-draft', authMiddleware, async (req, res) => {
+app.post('/api/events/:eventId/connections/ai-draft', authMiddleware, aiLimiter, async (req, res) => {
   try {
     const me = req.user.id;
     const recipientId = req.body.recipientId;
@@ -1297,7 +1286,7 @@ Name: ${them.full_name || 'A member'} | Business: ${them.business_name || 'N/A'}
 
 // ── AI Match ──────────────────────────────────────────────────────────────
 
-app.post('/api/events/:id/ai-match', authMiddleware, async (req, res) => {
+app.post('/api/events/:id/ai-match', authMiddleware, aiLimiter, async (req, res) => {
   try {
     const me = req.user;
 
@@ -1364,8 +1353,6 @@ ${attendeeList}`;
     });
 
     const raw = completion.choices[0]?.message?.content ?? '';
-    console.log('[AI match] raw response:', raw.slice(0, 300));
-
     // Extract JSON — handle plain JSON or ```json ... ``` fenced blocks
     const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || raw.match(/(\{[\s\S]*\})/);
     const jsonStr = jsonMatch ? jsonMatch[1].trim() : raw.trim();
@@ -1393,6 +1380,8 @@ ${attendeeList}`;
   }
 });
 
+app.use('/api', (_req, res) => res.status(404).json({ error: 'API route not found' }));
+
 // Serve the built frontend if dist/ exists (production deployment)
 const distPath = [
   path.join(__dirname, '../dist/client'),
@@ -1400,12 +1389,44 @@ const distPath = [
 ].find((candidate) => fs.existsSync(path.join(candidate, 'index.html')));
 
 if (distPath) {
-  app.use(express.static(distPath));
-  // SPA fallback — must use app.use so path-to-regexp wildcard issues are avoided
-  app.use((_req, res) => {
+  app.use(express.static(distPath, {
+    etag: true,
+    setHeaders(res, filePath) {
+      if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      } else if (filePath.endsWith('index.html') || filePath.endsWith('sw.js')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
+    },
+  }));
+
+  // A missing hashed asset must be a real 404. Returning HTML here causes the
+  // browser MIME error that presented as a blank screen on old PWA installs.
+  app.use('/assets', (_req, res) => res.status(404).type('text').send('Asset not found'));
+
+  app.get('*path', (req, res, next) => {
+    if (!req.accepts('html')) return next();
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, '0.0.0.0', () => console.log(`API server running on port ${PORT}`));
+app.use((error, _req, res, _next) => {
+  console.error(JSON.stringify({ level: 'error', event: 'request_error', message: error.message }));
+  if (error instanceof multer.MulterError) return res.status(400).json({ error: error.message });
+  return res.status(500).json({ error: 'Server error' });
+});
+
+const server = app.listen(config.port, '0.0.0.0', () => console.log(`API server running on port ${config.port}`));
+
+function shutdown(signal) {
+  console.info(`${signal} received; shutting down`);
+  server.close(async () => {
+    await pool.end();
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10_000).unref();
+}
+
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));

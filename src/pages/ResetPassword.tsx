@@ -39,7 +39,9 @@ export function ResetPasswordPage() {
     <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-slate-900">
       {/* Charlotte skyline */}
       <img
-        src="/charlotte-skyline.png"
+        src="/charlotte-skyline-clean.jpg"
+        width={1280}
+        height={853}
         alt=""
         aria-hidden
         className="absolute inset-0 h-full w-full object-cover object-right"

@@ -45,8 +45,8 @@ export function DoorCheckPage() {
       setManualEmail('');
       setManualName('');
       fetchCheckins();
-    } catch (err: any) {
-      setManualMsg({ kind: 'err', text: err?.message ?? 'Something went wrong' });
+    } catch (err: unknown) {
+      setManualMsg({ kind: 'err', text: err instanceof Error ? err.message : 'Something went wrong' });
     } finally {
       setManualBusy(false);
     }

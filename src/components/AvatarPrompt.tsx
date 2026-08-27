@@ -16,8 +16,6 @@ export function AvatarPrompt() {
   const cameraRef = React.useRef<HTMLInputElement>(null);
   const libraryRef = React.useRef<HTMLInputElement>(null);
 
-  if (dismissed || user?.avatar_url) return null;
-
   const dismiss = () => {
     localStorage.setItem(DISMISSED_KEY, '1');
     setDismissed(true);
@@ -51,6 +49,8 @@ export function AvatarPrompt() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [menuOpen]);
+
+  if (dismissed || user?.avatar_url) return null;
 
   const pickCamera = () => {
     setMenuOpen(false);

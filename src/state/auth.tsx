@@ -1,5 +1,5 @@
 import React from 'react';
-import { getMe, clearToken, type AppUser } from '../lib/api';
+import { getMe, clearToken, signOutSession, type AppUser } from '../lib/api';
 
 type AuthState = {
   user: AppUser | null;
@@ -75,6 +75,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = React.useCallback(() => {
     clearToken();
+    void signOutSession().catch(() => {
+      // Local state still signs out if the server is temporarily unavailable.
+    });
     setUser(null);
     setError(null);
     setLoading(false);
