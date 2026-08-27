@@ -10,6 +10,7 @@ import {
   getEventFeedback,
 } from '../lib/api';
 import type { Event, CheckIn, NetworkingRound, EventFeedback } from '../types/models';
+import { orderAdminEvents } from '../lib/events';
 import { fmtET, etInputToUtc } from '../lib/tz';
 import { RaffleModal } from '../components/RaffleModal';
 
@@ -493,7 +494,7 @@ export function AdminPage() {
   const [inviteLink, setInviteLink] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState<'events' | 'invite'>('events');
 
-  const load = () => getEvents(true).then(setEvents);
+  const load = () => getEvents(true).then((rows) => setEvents(orderAdminEvents(rows)));
   React.useEffect(() => { load(); }, []);
 
   const openNew = () => { setForm(EMPTY_FORM); setShowForm(true); };

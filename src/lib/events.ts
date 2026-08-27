@@ -4,6 +4,22 @@ import { toET } from './tz';
 
 const MAX_VISIBLE_EVENTS = 3;
 
+export function orderAdminEvents(events: Event[], now = new Date()) {
+  const nowMs = now.getTime();
+
+  return [...events].sort((a, b) => {
+    const aStart = new Date(a.start_at).getTime();
+    const bStart = new Date(b.start_at).getTime();
+    const aIsUpcoming = aStart >= nowMs;
+    const bIsUpcoming = bStart >= nowMs;
+
+    if (aIsUpcoming !== bIsUpcoming) return aIsUpcoming ? -1 : 1;
+
+    // Upcoming events run nearest-to-farthest; past events run newest-to-oldest.
+    return aIsUpcoming ? aStart - bStart : bStart - aStart;
+  });
+}
+
 export function selectEventFeed(events: Event[], now = new Date()) {
   const todayET = toET(now);
   const byStartAscending = (a: Event, b: Event) =>
