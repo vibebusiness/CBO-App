@@ -433,9 +433,11 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
   const normalised = email.toLowerCase().trim();
   try {
     const userRes = await pool.query('SELECT id FROM users WHERE email = $1', [normalised]);
-    if (!userRes.rows[0]) return res.json({ ok: true });
-    // Always return the same response so this endpoint cannot enumerate members.
-    res.json({ ok: true });
+    if (!userRes.rows[0]) return res.json({ ok: true, exists: false });
+
+    // The reset screen uses this flag to distinguish an existing account from
+    // an address that should be directed to sign-up.
+    res.json({ ok: true, exists: true });
     const userId = userRes.rows[0].id;
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour

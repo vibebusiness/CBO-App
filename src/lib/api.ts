@@ -350,7 +350,7 @@ export async function verifyInviteToken(token: string): Promise<{ valid: boolean
 }
 
 // Password reset
-export async function forgotPassword(email: string): Promise<{ ok: boolean; exists?: boolean }> {
+export async function forgotPassword(email: string): Promise<{ ok: boolean; exists: boolean }> {
   const res = await fetch('/api/auth/forgot-password', {
     method: 'POST',
     credentials: 'same-origin',

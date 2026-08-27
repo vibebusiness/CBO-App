@@ -168,7 +168,7 @@ export function AuthPage() {
                 <div className="mb-1 text-2xl">📬</div>
                 <p className="text-sm font-medium text-slate-800">Check your email</p>
                 <p className="mt-1 text-xs text-slate-500">
-                  If that address is in our system, a reset link is on its way. Check your inbox (and spam folder).
+                  We found your account and sent a reset link. Check your inbox and spam folder.
                 </p>
               </div>
             ) : (
