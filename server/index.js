@@ -1009,6 +1009,112 @@ app.delete('/api/events/:eventId/checkins/:userId', authMiddleware, adminOnly, a
   }
 });
 
+// ── Admin Users ───────────────────────────────────────────────────────────
+
+app.get('/api/admin/users', authMiddleware, adminOnly, async (req, res) => {
+  const rawQuery = typeof req.query.query === 'string' ? req.query.query.trim() : '';
+  const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '50'), 10) || 50, 1), 100);
+  const offset = Math.max(parseInt(String(req.query.offset ?? '0'), 10) || 0, 0);
+  const params = [limit, offset];
+  let where = '';
+
+  if (rawQuery) {
+    params.push(`%${rawQuery.toLowerCase()}%`);
+    where = `
+      WHERE lower(u.email) LIKE $3
+         OR lower(coalesce(u.full_name, '')) LIKE $3
+         OR lower(coalesce(u.business_name, '')) LIKE $3
+         OR lower(coalesce(u.phone, '')) LIKE $3
+         OR lower(coalesce(u.industry, '')) LIKE $3
+    `;
+  }
+
+  try {
+    const result = await pool.query(
+      `WITH filtered AS (
+         SELECT u.id, u.email, u.role, u.full_name, u.business_name, u.tagline,
+                u.industry, u.phone, u.avatar_url, u.created_at,
+                COUNT(c.id)::int AS checkin_count,
+                MAX(c.checked_in_at) AS last_checkin_at
+           FROM users u
+           LEFT JOIN checkins c ON c.user_id = u.id
+           ${where}
+          GROUP BY u.id
+       )
+       SELECT filtered.*,
+              COUNT(*) OVER()::int AS total_count,
+              last_event.event_id AS last_event_id,
+              last_event.title AS last_event_title
+         FROM filtered
+         LEFT JOIN LATERAL (
+           SELECT e.id AS event_id, e.title
+             FROM checkins c
+             JOIN events e ON e.id = c.event_id
+            WHERE c.user_id = filtered.id
+            ORDER BY c.checked_in_at DESC
+            LIMIT 1
+         ) last_event ON true
+        ORDER BY filtered.created_at DESC
+        LIMIT $1 OFFSET $2`,
+      params
+    );
+
+    const users = result.rows.map(({ total_count, ...user }) => user);
+    res.json({ users, total: result.rows[0]?.total_count ?? 0 });
+  } catch (e) {
+    console.error('[admin-users] search error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/api/admin/users/:id', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const userRes = await pool.query(
+      `SELECT u.id, u.email, u.role, u.full_name, u.business_name, u.tagline,
+              u.industry, u.phone, u.avatar_url, u.created_at,
+              COUNT(c.id)::int AS checkin_count,
+              MAX(c.checked_in_at) AS last_checkin_at
+         FROM users u
+         LEFT JOIN checkins c ON c.user_id = u.id
+        WHERE u.id = $1
+        GROUP BY u.id`,
+      [req.params.id]
+    );
+    const user = userRes.rows[0];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const lastEventRes = await pool.query(
+      `SELECT e.id AS last_event_id, e.title AS last_event_title
+         FROM checkins c
+         JOIN events e ON e.id = c.event_id
+        WHERE c.user_id = $1
+        ORDER BY c.checked_in_at DESC
+        LIMIT 1`,
+      [req.params.id]
+    );
+
+    const checkinsRes = await pool.query(
+      `SELECT e.id AS event_id, e.title AS event_title, e.start_at AS event_start_at,
+              e.status AS event_status, c.checked_in_at
+         FROM checkins c
+         JOIN events e ON e.id = c.event_id
+        WHERE c.user_id = $1
+        ORDER BY c.checked_in_at DESC`,
+      [req.params.id]
+    );
+
+    res.json({
+      ...user,
+      last_event_id: lastEventRes.rows[0]?.last_event_id ?? null,
+      last_event_title: lastEventRes.rows[0]?.last_event_title ?? null,
+      checkins: checkinsRes.rows,
+    });
+  } catch (e) {
+    console.error('[admin-users] detail error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // ── Admin Invite Tokens ───────────────────────────────────────────────────
 
 app.post('/api/admin/invite', authMiddleware, adminOnly, async (req, res) => {

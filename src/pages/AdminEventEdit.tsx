@@ -201,7 +201,7 @@ export function AdminEventEditPage() {
         has_raffle: form.has_raffle,
         has_networking: form.has_networking,
       });
-      navigate('/admin');
+      navigate('/admin/events/all');
     } catch (e) {
       alert((e as Error).message);
     } finally {
@@ -221,8 +221,8 @@ export function AdminEventEditPage() {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
         <div className="text-sm text-slate-500">Event not found</div>
-        <button onClick={() => navigate('/admin')} className="text-sm text-slate-900 underline">
-          Back to admin
+        <button onClick={() => navigate('/admin/events')} className="text-sm text-slate-900 underline">
+          Back to events
         </button>
       </div>
     );
@@ -231,7 +231,7 @@ export function AdminEventEditPage() {
   return (
     <div className="space-y-4">
       <button
-        onClick={() => navigate('/admin')}
+        onClick={() => navigate('/admin/events')}
         className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800"
       >
         ← Back to events
@@ -320,7 +320,7 @@ export function AdminEventEditPage() {
             {saving ? 'Saving…' : 'Save changes'}
           </button>
           <button
-            onClick={() => navigate('/admin')}
+            onClick={() => navigate('/admin/events/all')}
             className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
           >
             Cancel

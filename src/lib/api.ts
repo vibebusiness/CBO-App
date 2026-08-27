@@ -78,6 +78,25 @@ export type AppUser = {
   created_at: string;
 };
 
+export type AdminUserSummary = AppUser & {
+  checkin_count: number;
+  last_checkin_at: string | null;
+  last_event_id: string | null;
+  last_event_title: string | null;
+};
+
+export type AdminUserCheckIn = {
+  event_id: string;
+  event_title: string;
+  event_start_at: string;
+  event_status: 'published' | 'draft';
+  checked_in_at: string;
+};
+
+export type AdminUserDetail = AdminUserSummary & {
+  checkins: AdminUserCheckIn[];
+};
+
 // Auth
 export async function signUp(email: string, password: string, inviteToken?: string) {
   return request<{ token: string; user: AppUser }>('/auth/signup', {
@@ -349,6 +368,18 @@ export async function getEventFeedback(eventId: string): Promise<EventFeedback[]
 // Admin invite
 export async function createInviteLink(): Promise<{ token: string; link: string }> {
   return request('/admin/invite', { method: 'POST' });
+}
+
+export async function getAdminUsers(query = ''): Promise<{ users: AdminUserSummary[]; total: number }> {
+  const params = new URLSearchParams();
+  const trimmed = query.trim();
+  if (trimmed) params.set('query', trimmed);
+  const suffix = params.toString() ? `?${params}` : '';
+  return request(`/admin/users${suffix}`);
+}
+
+export async function getAdminUser(id: string): Promise<AdminUserDetail> {
+  return request(`/admin/users/${id}`);
 }
 
 export async function verifyInviteToken(token: string): Promise<{ valid: boolean }> {

@@ -11,7 +11,15 @@ const EventDetailPage = React.lazy(() => import('./pages/EventDetail').then((mod
 const EventAttendeesPage = React.lazy(() => import('./pages/EventAttendees').then((module) => ({ default: module.EventAttendeesPage })));
 const ProfilePage = React.lazy(() => import('./pages/Profile').then((module) => ({ default: module.ProfilePage })));
 const AdminPage = React.lazy(() => import('./pages/Admin').then((module) => ({ default: module.AdminPage })));
+const AdminEventsMenuPage = React.lazy(() => import('./pages/AdminEvents').then((module) => ({ default: module.AdminEventsMenuPage })));
+const AdminEventCreatePage = React.lazy(() => import('./pages/AdminEvents').then((module) => ({ default: module.AdminEventCreatePage })));
+const AdminFutureEventsPage = React.lazy(() => import('./pages/AdminEvents').then((module) => ({ default: module.AdminFutureEventsPage })));
+const AdminPastEventsPage = React.lazy(() => import('./pages/AdminEvents').then((module) => ({ default: module.AdminPastEventsPage })));
+const AdminAllEventsPage = React.lazy(() => import('./pages/AdminEvents').then((module) => ({ default: module.AdminAllEventsPage })));
 const AdminEventEditPage = React.lazy(() => import('./pages/AdminEventEdit').then((module) => ({ default: module.AdminEventEditPage })));
+const AdminUsersPage = React.lazy(() => import('./pages/AdminUsers').then((module) => ({ default: module.AdminUsersPage })));
+const AdminUserDetailPage = React.lazy(() => import('./pages/AdminUsers').then((module) => ({ default: module.AdminUserDetailPage })));
+const AdminInvitePage = React.lazy(() => import('./pages/AdminInvite').then((module) => ({ default: module.AdminInvitePage })));
 const DoorCheckPage = React.lazy(() => import('./pages/DoorCheck').then((module) => ({ default: module.DoorCheckPage })));
 const ResetPasswordPage = React.lazy(() => import('./pages/ResetPassword').then((module) => ({ default: module.ResetPasswordPage })));
 
@@ -93,6 +101,30 @@ function AuthedApp() {
         <Route path="/profile" component={ProfilePage} />
         <Route path="/admin/events/:id/edit">
           {user.role === 'admin' ? <AdminEventEditPage /> : <Redirect to="/events" />}
+        </Route>
+        <Route path="/admin/events/new">
+          {user.role === 'admin' ? <AdminEventCreatePage /> : <Redirect to="/events" />}
+        </Route>
+        <Route path="/admin/events/future">
+          {user.role === 'admin' ? <AdminFutureEventsPage /> : <Redirect to="/events" />}
+        </Route>
+        <Route path="/admin/events/past">
+          {user.role === 'admin' ? <AdminPastEventsPage /> : <Redirect to="/events" />}
+        </Route>
+        <Route path="/admin/events/all">
+          {user.role === 'admin' ? <AdminAllEventsPage /> : <Redirect to="/events" />}
+        </Route>
+        <Route path="/admin/events">
+          {user.role === 'admin' ? <AdminEventsMenuPage /> : <Redirect to="/events" />}
+        </Route>
+        <Route path="/admin/users/:id">
+          {user.role === 'admin' ? <AdminUserDetailPage /> : <Redirect to="/events" />}
+        </Route>
+        <Route path="/admin/users">
+          {user.role === 'admin' ? <AdminUsersPage /> : <Redirect to="/events" />}
+        </Route>
+        <Route path="/admin/invite">
+          {user.role === 'admin' ? <AdminInvitePage /> : <Redirect to="/events" />}
         </Route>
         <Route path="/admin">
           {user.role === 'admin' ? <AdminPage /> : <Redirect to="/events" />}
