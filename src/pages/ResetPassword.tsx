@@ -4,7 +4,9 @@ import { validateResetToken, resetPassword } from '../lib/api';
 
 export function ResetPasswordPage() {
   const [, navigate] = useLocation();
-  const token = new URLSearchParams(window.location.search).get('token') ?? '';
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('token') ?? '';
+  const isAccountSetup = params.get('setup') === '1';
 
   const [status, setStatus] = React.useState<'validating' | 'valid' | 'invalid' | 'submitting' | 'done'>('validating');
   const [password, setPassword] = React.useState('');
@@ -68,7 +70,9 @@ export function ResetPasswordPage() {
             <div className="mb-3 text-4xl">⚠️</div>
             <h2 className="mb-2 text-base font-semibold text-slate-900">Link expired or invalid</h2>
             <p className="mb-4 text-sm text-slate-500">
-              This reset link has already been used or has expired (links are valid for 1 hour).
+              {isAccountSetup
+                ? 'This account setup link has already been used or has expired. Use Forgot password to request a new link.'
+                : 'This reset link has already been used or has expired (links are valid for 1 hour).'}
             </p>
             <button
               onClick={() => navigate('/')}
@@ -81,7 +85,9 @@ export function ResetPasswordPage() {
 
         {(status === 'valid' || status === 'submitting') && (
           <div>
-            <h2 className="mb-1 text-center text-lg font-semibold text-slate-800">Set a new password</h2>
+            <h2 className="mb-1 text-center text-lg font-semibold text-slate-800">
+              {isAccountSetup ? 'Create your password' : 'Set a new password'}
+            </h2>
             <p className="mb-5 text-center text-xs text-slate-500">Choose a strong password of at least 8 characters.</p>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
@@ -116,7 +122,7 @@ export function ResetPasswordPage() {
                 disabled={status === 'submitting'}
                 className="w-full rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-50"
               >
-                {status === 'submitting' ? 'Saving…' : 'Set new password'}
+                {status === 'submitting' ? 'Saving…' : isAccountSetup ? 'Create password' : 'Set new password'}
               </button>
             </form>
           </div>
@@ -125,7 +131,9 @@ export function ResetPasswordPage() {
         {status === 'done' && (
           <div className="text-center">
             <div className="mb-3 text-4xl">✅</div>
-            <h2 className="mb-2 text-base font-semibold text-slate-900">Password updated!</h2>
+            <h2 className="mb-2 text-base font-semibold text-slate-900">
+              {isAccountSetup ? 'Your account is ready!' : 'Password updated!'}
+            </h2>
             <p className="text-sm text-slate-500">Redirecting you to log in…</p>
           </div>
         )}

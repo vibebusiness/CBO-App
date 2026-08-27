@@ -195,7 +195,13 @@ export async function adminManualCheckIn(
   eventId: string,
   email: string,
   fullName?: string
-): Promise<{ ok: boolean; created_account: boolean; already_checked_in: boolean; user: { id: string; email: string; full_name: string | null } }> {
+): Promise<{
+  ok: boolean;
+  created_account: boolean;
+  setup_email_sent: boolean | null;
+  already_checked_in: boolean;
+  user: { id: string; email: string; full_name: string | null };
+}> {
   return request(`/events/${eventId}/checkins/manual`, {
     method: 'POST',
     body: JSON.stringify({ email, fullName }),

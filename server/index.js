@@ -12,6 +12,7 @@ import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import { config } from './config.js';
 import { databaseIsReady, pool } from './db.js';
+import { sendGhlAccountSetupEmail, sendGhlPasswordResetEmail } from './email.js';
 import {
   adminOnly,
   clearSession,
@@ -27,6 +28,7 @@ import {
 } from './http.js';
 
 const ET = 'America/New_York';
+const APP_BASE_URL = config.appUrl.replace(/\/$/, '');
 
 // Messaging closes at midnight (ET) at the end of the event's calendar day.
 // Returns the UTC Date of that cutoff for a given event start_at.
@@ -161,96 +163,6 @@ function buildNetworkingGroups(userIds, groupSize, pastAssignments) {
     });
   }
   return groups;
-}
-
-// ── GHL email helper ───────────────────────────────────────────────────────
-
-async function sendGhlPasswordResetEmail(toEmail, resetLink) {
-  const apiKey = process.env.GHL_API_KEY;
-  const locationId = process.env.GHL_LOCATION_ID;
-  if (!apiKey || !locationId) {
-    console.error('GHL_API_KEY or GHL_LOCATION_ID not set — skipping email send');
-    return;
-  }
-
-  const GHL = 'https://services.leadconnectorhq.com';
-  const headers = {
-    Authorization: `Bearer ${apiKey}`,
-    'Content-Type': 'application/json',
-    Version: '2021-04-15',
-  };
-
-  // 1. Find existing contact or create one
-  let contactId;
-  try {
-    const searchRes = await fetch(
-      `${GHL}/contacts/?locationId=${locationId}&query=${encodeURIComponent(toEmail)}`,
-      { headers }
-    );
-    if (!searchRes.ok) {
-      const errText = await searchRes.text();
-      console.error(`GHL contact search failed (${searchRes.status}):`, errText);
-      throw new Error('GHL contact search failed');
-    }
-    const searchData = await searchRes.json();
-    const found = (searchData.contacts ?? searchData.data ?? []).find(
-      (c) => c.email?.toLowerCase() === toEmail.toLowerCase()
-    );
-    if (found) {
-      contactId = found.id;
-    } else {
-      const createRes = await fetch(`${GHL}/contacts/`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ locationId, email: toEmail }),
-      });
-      if (!createRes.ok) {
-        const errText = await createRes.text();
-        console.error(`GHL contact create failed (${createRes.status}):`, errText);
-        throw new Error('GHL contact create failed');
-      }
-      const createData = await createRes.json();
-      contactId = createData.contact?.id;
-    }
-  } catch (e) {
-    console.error('GHL contact lookup/create failed:', e);
-    throw e;
-  }
-
-  if (!contactId) throw new Error('Could not obtain GHL contactId');
-
-  // 2. Send the email via GHL conversations API
-  const html = `
-    <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
-      <img src="https://cbo-app.replit.app/cbo-logo.png" alt="Charlotte Business Owners" style="height:48px; margin-bottom:24px;" />
-      <h2 style="color:#0f172a; margin-bottom:8px;">Password Reset</h2>
-      <p style="color:#475569;">You requested a password reset for your Charlotte Business Owners account. Click the button below to set a new password. This link expires in <strong>1 hour</strong>.</p>
-      <a href="${resetLink}" style="display:inline-block; margin-top:20px; padding:12px 24px; background:#0f172a; color:#fff; text-decoration:none; border-radius:10px; font-weight:600;">Reset my password</a>
-      <p style="margin-top:24px; color:#94a3b8; font-size:13px;">If you didn't request this, you can safely ignore this email.</p>
-      <hr style="border:none; border-top:1px solid #e2e8f0; margin:24px 0;" />
-      <p style="color:#94a3b8; font-size:12px;">Charlotte Business Owners · Charlotte, NC</p>
-    </div>
-  `;
-  const message = `Reset your Charlotte Business Owners password by visiting: ${resetLink}\n\nThis link expires in 1 hour. If you didn't request this, ignore this email.`;
-
-  const msgRes = await fetch(`${GHL}/conversations/messages`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      type: 'Email',
-      contactId,
-      locationId,
-      subject: 'Charlotte Business Owners Password Reset',
-      html,
-      message,
-    }),
-  });
-
-  if (!msgRes.ok) {
-    const err = await msgRes.text();
-    console.error('GHL message send failed:', err);
-    throw new Error('Email delivery failed');
-  }
 }
 
 // Serve user avatar headshots
@@ -445,12 +357,12 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
       'INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, $3)',
       [userId, token, expiresAt]
     );
-    const resetLink = `${config.appUrl}/reset-password?token=${token}`;
+    const resetLink = `${APP_BASE_URL}/reset-password?token=${token}`;
     if (!process.env.GHL_API_KEY || !process.env.GHL_LOCATION_ID) {
       console.warn('[forgot-password] GHL_API_KEY or GHL_LOCATION_ID missing — reset email NOT sent');
       return;
     }
-    await sendGhlPasswordResetEmail(normalised, resetLink);
+    await sendGhlPasswordResetEmail(normalised, resetLink, config.appUrl);
     console.info('[forgot-password] reset email dispatched');
   } catch (e) {
     console.error('[forgot-password] error:', e);
@@ -996,52 +908,94 @@ app.post('/api/events/:id/checkins', authMiddleware, async (req, res) => {
 
 // Admin manual check-in: check in an attendee by email, creating an account if needed.
 app.post('/api/events/:eventId/checkins/manual', authMiddleware, adminOnly, async (req, res) => {
+  let client;
   try {
     const { email, fullName } = req.body || {};
     const normalised = (email || '').toLowerCase().trim();
+    const trimmedName = typeof fullName === 'string' ? fullName.trim() : '';
     if (!EMAIL_RE.test(normalised)) return res.status(400).json({ error: 'Valid email required' });
+    if (trimmedName.length > 200) return res.status(400).json({ error: 'Name must be 200 characters or fewer' });
 
-    const eventRes = await pool.query('SELECT id FROM events WHERE id = $1', [req.params.eventId]);
+    client = await pool.connect();
+    const eventRes = await client.query('SELECT id, title FROM events WHERE id = $1', [req.params.eventId]);
     if (!eventRes.rows[0]) return res.status(404).json({ error: 'Event not found' });
+    const event = eventRes.rows[0];
 
-    let userRes = await pool.query('SELECT id, full_name FROM users WHERE lower(email) = $1', [normalised]);
+    await client.query('BEGIN');
+    let userRes = await client.query('SELECT id, full_name FROM users WHERE lower(email) = $1', [normalised]);
     let user = userRes.rows[0];
     let created = false;
+    let setupToken = null;
     if (!user) {
-      if (!fullName || !fullName.trim()) {
+      if (!trimmedName) {
+        await client.query('ROLLBACK');
         return res.status(400).json({ error: 'No account found for that email — provide a name to create one' });
       }
-      // Account created without a usable password; the attendee uses "Forgot password" to set one.
+      // Account starts with an unknown random password and receives a one-time setup link below.
       const randomPassword = crypto.randomBytes(24).toString('hex');
       const hash = await bcrypt.hash(randomPassword, 10);
-      const insertRes = await pool.query(
+      const insertRes = await client.query(
         'INSERT INTO users (email, password_hash, role, full_name) VALUES ($1, $2, $3, $4) ON CONFLICT (email) DO NOTHING RETURNING id, full_name',
-        [normalised, hash, 'member', fullName.trim()]
+        [normalised, hash, 'member', trimmedName]
       );
       if (insertRes.rows[0]) {
         user = insertRes.rows[0];
         created = true;
       } else {
         // Concurrent request created the account first — use the existing one.
-        userRes = await pool.query('SELECT id, full_name FROM users WHERE lower(email) = $1', [normalised]);
+        userRes = await client.query('SELECT id, full_name FROM users WHERE lower(email) = $1', [normalised]);
         user = userRes.rows[0];
-        if (!user) return res.status(500).json({ error: 'Could not create or find the account — try again' });
+        if (!user) throw new Error('Could not create or find the account');
       }
     }
 
-    const ck = await pool.query(
+    const ck = await client.query(
       'INSERT INTO checkins (event_id, user_id) VALUES ($1, $2) ON CONFLICT (event_id, user_id) DO NOTHING RETURNING *',
       [req.params.eventId, user.id]
     );
+
+    if (created) {
+      setupToken = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await client.query(
+        'INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, $3)',
+        [user.id, setupToken, expiresAt]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    let setupEmailSent = null;
+    if (created) {
+      const setupLink = `${APP_BASE_URL}/reset-password?token=${setupToken}&setup=1`;
+      try {
+        await sendGhlAccountSetupEmail(normalised, {
+          fullName: user.full_name,
+          eventTitle: event.title,
+          setupLink,
+          appUrl: config.appUrl,
+        });
+        setupEmailSent = true;
+        console.info('[manual-checkin] account setup email dispatched');
+      } catch (emailError) {
+        setupEmailSent = false;
+        console.error('[manual-checkin] account created but setup email failed:', emailError);
+      }
+    }
+
     res.json({
       ok: true,
       created_account: created,
+      setup_email_sent: setupEmailSent,
       already_checked_in: ck.rows.length === 0,
       user: { id: user.id, email: normalised, full_name: user.full_name },
     });
   } catch (e) {
+    await client?.query('ROLLBACK').catch(() => {});
     console.error('[manual-checkin] error:', e);
     res.status(500).json({ error: 'Server error' });
+  } finally {
+    client?.release();
   }
 });
 

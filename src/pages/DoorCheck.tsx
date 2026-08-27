@@ -35,12 +35,14 @@ export function DoorCheckPage() {
       const r = await adminManualCheckIn(id, email, manualName.trim() || undefined);
       const who = r.user.full_name || r.user.email;
       setManualMsg({
-        kind: 'ok',
-        text: r.already_checked_in
+        kind: r.created_account && !r.setup_email_sent ? 'err' : 'ok',
+        text: r.created_account
+          ? r.setup_email_sent
+            ? `Account created, ${who} checked in, and a password setup email was sent.`
+            : `Account created and ${who} checked in, but the password setup email could not be sent. Ask them to use “Forgot password.”`
+          : r.already_checked_in
           ? `${who} was already checked in.`
-          : r.created_account
-            ? `Account created and ${who} checked in. They can use "Forgot password" to set a password.`
-            : `${who} checked in.`,
+          : `${who} checked in.`,
       });
       setManualEmail('');
       setManualName('');
