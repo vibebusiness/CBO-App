@@ -75,7 +75,6 @@ exposeLocalhost = true
 [deployment]
 deploymentTarget = "autoscale"
 build = ["npm", "run", "build"]
-publicDir = "dist/client"
 run = ["npm", "run", "start"]
 
 [postMerge]
