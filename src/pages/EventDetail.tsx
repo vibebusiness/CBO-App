@@ -302,6 +302,20 @@ export function EventDetailPage() {
   >(undefined);
 
   const id = params?.id;
+  const checkinSection = React.useRef<HTMLDivElement>(null);
+  const scrolledToCheckin = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    if (loading || !event || event.id !== id || scrolledToCheckin.current === id
+      || new URLSearchParams(window.location.search).get('checkin') !== '1') return;
+    const frame = requestAnimationFrame(() => {
+      if (!checkinSection.current) return;
+      checkinSection.current.scrollIntoView({ block: 'start', behavior: 'instant' });
+      checkinSection.current.focus({ preventScroll: true });
+      scrolledToCheckin.current = id ?? null;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [loading, event, id]);
 
   React.useEffect(() => {
     if (!id) return;
@@ -479,7 +493,8 @@ export function EventDetailPage() {
       </div>
 
       {/* Check-in */}
-      <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div id="check-in" ref={checkinSection} tabIndex={-1} aria-label="Event check-in"
+        className="mb-4 scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         {myCheckin ? (
           <div className="space-y-3">
             <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-4">

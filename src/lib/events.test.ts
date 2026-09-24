@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Event } from '../types/models';
-import { orderAdminEvents, selectEventFeed } from './events';
+import { orderAdminEvents, selectEventFeed, selectArrivalEvent } from './events';
 
 function event(id: string, startAt: string): Event {
   return {
@@ -19,6 +19,36 @@ function event(id: string, startAt: string): Event {
     created_at: startAt,
   };
 }
+
+describe('selectArrivalEvent', () => {
+  const now = new Date('2026-08-05T22:00:00Z');
+  it.each([60, 10, 0, -10, -120])('includes a start %i minutes from now', minutes => {
+    const candidate = event('today', new Date(now.getTime() + minutes * 60000).toISOString());
+    expect(selectArrivalEvent([candidate], now)?.id).toBe('today');
+  });
+  it('excludes events over an hour away, closed check-in, drafts, and invalid dates', () => {
+    expect(selectArrivalEvent([
+      event('early', '2026-08-05T23:00:01Z'),
+      event('closed', '2026-08-05T15:59:59Z'),
+      { ...event('draft', now.toISOString()), status: 'draft' },
+      event('invalid', 'invalid'),
+    ], now)).toBeUndefined();
+  });
+  it('uses the Eastern calendar day rather than the UTC day', () => {
+    expect(selectArrivalEvent([event('evening', '2026-08-05T23:00:00Z')],
+      new Date('2026-08-06T01:00:00Z'))?.id).toBe('evening');
+    expect(selectArrivalEvent([event('yesterday', '2026-08-06T03:00:00Z')],
+      new Date('2026-08-06T04:10:00Z'))).toBeUndefined();
+    expect(selectArrivalEvent([event('tomorrow', '2026-08-06T04:10:00Z')],
+      new Date('2026-08-06T03:45:00Z'))).toBeUndefined();
+  });
+  it('picks the nearest start without changing the supplied list', () => {
+    const candidates = [event('older', '2026-08-05T20:00:00Z'), event('nearest', '2026-08-05T22:10:00Z')];
+    expect(selectArrivalEvent(candidates, now)?.id).toBe('nearest');
+    expect(candidates[0].id).toBe('older');
+    expect(selectArrivalEvent([], now)).toBeUndefined();
+  });
+});
 
 describe('selectEventFeed', () => {
   it('shows no more than three events and orders past events newest first', () => {

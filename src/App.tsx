@@ -1,6 +1,7 @@
 import React from 'react';
 import { Route, Switch, Redirect, useRoute } from 'wouter';
 import { AuthedLayout } from './components/AuthedLayout';
+import { LoginLanding } from './components/LoginLanding';
 import { useAuth } from './state/auth';
 
 const AuthPage = React.lazy(() => import('./pages/Auth').then((module) => ({ default: module.AuthPage })));
@@ -152,13 +153,13 @@ export default function App() {
     <React.Suspense fallback={<StartupScreen />}>
       <Switch>
         <Route path="/">
-          {user ? <Redirect to="/events" /> : <AuthPage />}
+          {user ? <LoginLanding /> : <AuthPage />}
         </Route>
         <Route path="/auth">
-          {user ? <Redirect to="/events" /> : <AuthPage />}
+          {user ? <LoginLanding /> : <AuthPage />}
         </Route>
         <Route path="/signup">
-          {user ? <Redirect to="/events" /> : <AuthPage />}
+          {user ? <LoginLanding /> : <AuthPage />}
         </Route>
         <Route path="/reset-password" component={ResetPasswordPage} />
         <Route>

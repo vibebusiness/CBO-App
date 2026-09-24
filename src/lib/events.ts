@@ -4,6 +4,24 @@ import { toET } from './tz';
 
 const MAX_VISIBLE_EVENTS = 3;
 
+// Event dates use Charlotte time, even when the member is traveling.
+export function selectArrivalEvent(events: Event[], now = new Date()): Event | undefined {
+  const nowMs = now.getTime();
+  return events
+    .filter(event => {
+      const start = new Date(event.start_at);
+      const delta = start.getTime() - nowMs;
+      return event.status === 'published'
+        && Number.isFinite(delta)
+        && isSameDay(toET(start), toET(now))
+        && delta <= 60 * 60 * 1000
+        && delta >= -6 * 60 * 60 * 1000;
+    })
+    // When multiple events qualify, prefer the one closest to its start time.
+    .sort((a, b) => Math.abs(new Date(a.start_at).getTime() - nowMs)
+      - Math.abs(new Date(b.start_at).getTime() - nowMs))[0];
+}
+
 export function orderAdminEvents(events: Event[], now = new Date()) {
   const nowMs = now.getTime();
 
