@@ -98,10 +98,10 @@ export type AdminUserDetail = AdminUserSummary & {
 };
 
 // Auth
-export async function signUp(email: string, password: string, inviteToken?: string) {
+export async function signUp(email: string, password: string, details: { firstName: string; lastName: string; phone: string; industry: string }, inviteToken?: string) {
   return request<{ token: string; user: AppUser }>('/auth/signup', {
     method: 'POST',
-    body: JSON.stringify({ email, password, inviteToken }),
+    body: JSON.stringify({ email, password, ...details, inviteToken }),
   });
 }
 

@@ -4,10 +4,25 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { signIn, signUp, forgotPassword } from '../lib/api';
 import { useAuth } from '../state/auth';
+import { INDUSTRIES } from '../lib/industries';
 
 const schema = z.object({
   email: z.string().email('Enter a valid email'),
   password: z.string().min(8, 'Use 8+ characters'),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  phone: z.string().optional(),
+  industry: z.string().optional(),
+});
+
+const signupSchema = schema.extend({
+  firstName: z.string().trim().min(1, 'First name is required').max(100),
+  lastName: z.string().trim().min(1, 'Last name is required').max(100),
+  phone: z.string().trim().max(40).refine(
+    value => /^[+()\d\s.-]+$/.test(value) && value.replace(/\D/g, '').length >= 7 && value.replace(/\D/g, '').length <= 15,
+    'Enter a valid phone number'
+  ),
+  industry: z.string().trim().min(1, 'Industry is required').max(120),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -19,7 +34,7 @@ export function AuthPage() {
 
   const resetDone = params.get('reset') === '1';
 
-  const [mode, setMode] = React.useState<'signin' | 'signup'>(hasInvite ? 'signup' : 'signin');
+  const [mode, setMode] = React.useState<'signin' | 'signup'>(hasInvite || window.location.pathname === '/signup' ? 'signup' : 'signin');
   const [msg, setMsg] = React.useState<string | null>(
     resetDone ? 'Password updated — please log in.' : null
   );
@@ -33,7 +48,7 @@ export function AuthPage() {
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm<FormValues>({ resolver: zodResolver(schema) });
+  } = useForm<FormValues>({ resolver: zodResolver(mode === 'signup' ? signupSchema : schema) });
 
   const switchMode = (next: 'signin' | 'signup') => {
     setMode(next);
@@ -47,7 +62,12 @@ export function AuthPage() {
     setMsg(null);
     try {
       if (mode === 'signup') {
-        await signUp(values.email, values.password, inviteToken ?? undefined);
+        await signUp(values.email, values.password, {
+          firstName: values.firstName!,
+          lastName: values.lastName!,
+          phone: values.phone!,
+          industry: values.industry!,
+        }, inviteToken ?? undefined);
         await refresh();
       } else {
         await signIn(values.email, values.password);
@@ -206,6 +226,22 @@ export function AuthPage() {
         ) : (
           /* Main login / signup form */
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            {mode === 'signup' && (
+              <>
+                <p className="text-xs text-slate-500">Just the basics for now. Add your business details, bio, and photo later in Profile.</p>
+                {([
+                  ['firstName', 'First name', 'given-name'],
+                  ['lastName', 'Last name', 'family-name'],
+                ] as const).map(([name, label, autoComplete]) => (
+                  <div key={name}>
+                    <label htmlFor={name} className="mb-1 block text-xs font-medium text-slate-600">{label}</label>
+                    <input id={name} autoComplete={autoComplete} maxLength={100} {...register(name)}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900" />
+                    {errors[name] && <p className="mt-1 text-xs text-red-500">{errors[name]?.message}</p>}
+                  </div>
+                ))}
+              </>
+            )}
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
               <input
@@ -218,6 +254,23 @@ export function AuthPage() {
               {errors.email && <p className="mt-1 text-xs text-red-500">{errors.email.message}</p>}
             </div>
 
+            {mode === 'signup' && (
+              <>
+                <div>
+                  <label htmlFor="signup-phone" className="mb-1 block text-xs font-medium text-slate-600">Phone number</label>
+                  <input id="signup-phone" type="tel" autoComplete="tel" maxLength={40} {...register('phone')}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900" />
+                  {errors.phone && <p className="mt-1 text-xs text-red-500">{errors.phone.message}</p>}
+                </div>
+                <div>
+                  <label htmlFor="signup-industry" className="mb-1 block text-xs font-medium text-slate-600">Industry</label>
+                  <input id="signup-industry" list="signup-industries" placeholder="Select or type your industry" maxLength={120} {...register('industry')}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900" />
+                  <datalist id="signup-industries">{INDUSTRIES.map(industry => <option key={industry} value={industry} />)}</datalist>
+                  {errors.industry && <p className="mt-1 text-xs text-red-500">{errors.industry.message}</p>}
+                </div>
+              </>
+            )}
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <label className="text-xs font-medium text-slate-600">Password</label>

@@ -248,10 +248,18 @@ app.post('/api/profile/avatar', authMiddleware, upload.single('avatar'), async (
 // ── Auth ──────────────────────────────────────────────────────────────────
 
 app.post('/api/auth/signup', authLimiter, async (req, res) => {
-  const { email, password, inviteToken } = req.body || {};
+  const { email, password, inviteToken, firstName, lastName, phone, industry } = req.body || {};
   if (typeof email !== 'string' || typeof password !== 'string') return res.status(400).json({ error: 'Email and password required' });
   if (!EMAIL_RE.test(email.trim())) return res.status(400).json({ error: 'Enter a valid email address' });
   if (password.length < 8 || password.length > 128) return res.status(400).json({ error: 'Password must be 8 to 128 characters' });
+  for (const [label, value, max] of [['First name', firstName, 100], ['Last name', lastName, 100], ['Industry', industry, 120]]) {
+    if (typeof value !== 'string' || !value.trim() || value.trim().length > max) {
+      return res.status(400).json({ error: `${label} is required and must be ${max} characters or fewer` });
+    }
+  }
+  if (typeof phone !== 'string' || phone.trim().length > 40 || !/^[+()\d\s.-]+$/.test(phone.trim()) || phone.replace(/\D/g, '').length < 7 || phone.replace(/\D/g, '').length > 15) {
+    return res.status(400).json({ error: 'Enter a valid phone number' });
+  }
   const client = await pool.connect();
   try {
     const hash = await bcrypt.hash(password, 10);
@@ -271,8 +279,8 @@ app.post('/api/auth/signup', authLimiter, async (req, res) => {
       if (tkRes.rows[0]) { role = 'admin'; tokenRow = tkRes.rows[0]; }
     }
     const result = await client.query(
-      'INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id, email, role, full_name, business_name, tagline, industry, phone, avatar_url, created_at',
-      [email.toLowerCase().trim(), hash, role]
+      'INSERT INTO users (email, password_hash, role, full_name, phone, industry) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, email, role, full_name, business_name, tagline, industry, phone, avatar_url, created_at',
+      [email.toLowerCase().trim(), hash, role, `${firstName.trim()} ${lastName.trim()}`, phone.trim(), industry.trim()]
     );
     const user = result.rows[0];
     if (tokenRow) {
