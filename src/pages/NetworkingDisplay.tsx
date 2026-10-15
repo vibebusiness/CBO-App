@@ -18,6 +18,15 @@ function tablesPerPage(round: NetworkingRound | null, viewportHeight: number) {
   return 8;
 }
 
+function memberTextSize(group: NetworkingRound['groups'][number]) {
+  const count = group.members.length;
+  const hasLongName = group.members.some((member) => (member.full_name ?? member.email).length > 20);
+  if (count > 10) return 'grid-cols-2 text-lg xl:text-2xl';
+  if (count > 8 || (count > 6 && hasLongName)) return 'grid-cols-1 text-xl md:text-2xl xl:text-3xl';
+  if (count > 6 || hasLongName) return 'grid-cols-1 text-xl md:text-2xl xl:text-4xl';
+  return 'grid-cols-1 text-xl md:text-2xl xl:text-[2.625rem]';
+}
+
 export function NetworkingDisplayPage() {
   const [, params] = useRoute('/admin/events/:id/display');
   const eventId = params?.id;
@@ -111,9 +120,9 @@ export function NetworkingDisplayPage() {
                 <h2 className="shrink-0 border-b-2 border-slate-200 pb-3 text-3xl font-black text-teal-800 md:text-4xl xl:text-5xl">
                   Table {group.label}
                 </h2>
-                <ul className={`mt-3 grid min-h-0 flex-1 content-center gap-x-5 gap-y-2 ${group.members.length > 10 ? 'grid-cols-2 text-lg xl:text-2xl' : 'grid-cols-1 text-xl md:text-2xl xl:text-3xl'}`}>
+                <ul className={`mt-3 grid min-h-0 flex-1 content-center gap-x-5 gap-y-2 leading-[1.08] ${memberTextSize(group)}`}>
                   {group.members.map((member) => (
-                    <li key={member.user_id} className="min-w-0 break-words font-extrabold leading-tight">
+                    <li key={member.user_id} className="min-w-0 break-words font-extrabold">
                       {member.full_name ?? member.email}
                     </li>
                   ))}
