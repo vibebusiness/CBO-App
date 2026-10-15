@@ -22,6 +22,7 @@ const AdminUsersPage = React.lazy(() => import('./pages/AdminUsers').then((modul
 const AdminUserDetailPage = React.lazy(() => import('./pages/AdminUsers').then((module) => ({ default: module.AdminUserDetailPage })));
 const AdminInvitePage = React.lazy(() => import('./pages/AdminInvite').then((module) => ({ default: module.AdminInvitePage })));
 const DoorCheckPage = React.lazy(() => import('./pages/DoorCheck').then((module) => ({ default: module.DoorCheckPage })));
+const NetworkingDisplayPage = React.lazy(() => import('./pages/NetworkingDisplay').then((module) => ({ default: module.NetworkingDisplayPage })));
 const ResetPasswordPage = React.lazy(() => import('./pages/ResetPassword').then((module) => ({ default: module.ResetPasswordPage })));
 
 function StartupScreen({
@@ -76,6 +77,7 @@ function StartupScreen({
 function AuthedApp() {
   const { user } = useAuth();
   const [isDoorRoute] = useRoute('/door/:id');
+  const [isNetworkingDisplayRoute] = useRoute('/admin/events/:id/display');
 
   if (!user?.full_name) {
     return <SetupPage />;
@@ -87,6 +89,16 @@ function AuthedApp() {
       <Switch>
         <Route path="/door/:id">
           {user.role === 'admin' ? <DoorCheckPage /> : <Redirect to="/events" />}
+        </Route>
+      </Switch>
+    );
+  }
+
+  if (isNetworkingDisplayRoute) {
+    return (
+      <Switch>
+        <Route path="/admin/events/:id/display">
+          {user.role === 'admin' ? <NetworkingDisplayPage /> : <Redirect to="/events" />}
         </Route>
       </Switch>
     );

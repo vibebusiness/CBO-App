@@ -339,6 +339,15 @@ function NetworkingModal({ event, onClose }: { event: Event; onClose: () => void
           </button>
         </div>
 
+        <a
+          href={`/admin/events/${event.id}/display`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mb-4 block rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-center text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+        >
+          Open TV View
+        </a>
+
         {loading ? (
           <div className="py-6 text-center text-sm text-slate-400">Loading…</div>
         ) : rounds.length === 0 ? (
