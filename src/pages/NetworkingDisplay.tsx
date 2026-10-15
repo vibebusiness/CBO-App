@@ -120,9 +120,9 @@ export function NetworkingDisplayPage() {
                 <h2 className="shrink-0 border-b-2 border-slate-200 pb-3 text-3xl font-black text-teal-800 md:text-4xl xl:text-5xl">
                   Table {group.label}
                 </h2>
-                <ul className={`mt-3 grid min-h-0 flex-1 content-center gap-x-5 gap-y-2 leading-[1.08] ${memberTextSize(group)}`}>
+                <ul className={`mt-3 grid min-h-0 flex-1 content-center gap-x-5 gap-y-2 ${memberTextSize(group)}`}>
                   {group.members.map((member) => (
-                    <li key={member.user_id} className="min-w-0 break-words font-extrabold">
+                    <li key={member.user_id} className="min-w-0 break-words font-extrabold" style={{ lineHeight: 1.08 }}>
                       {member.full_name ?? member.email}
                     </li>
                   ))}
