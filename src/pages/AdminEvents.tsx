@@ -320,7 +320,7 @@ function NetworkingModal({ event, onClose }: { event: Event; onClose: () => void
 
         <div className="mb-4 flex items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
           <div className="flex-1">
-            <label className="mb-1 block text-xs font-medium text-slate-600">People per group</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600">People per table</label>
             <input
               type="number"
               min={2}
@@ -343,7 +343,7 @@ function NetworkingModal({ event, onClose }: { event: Event; onClose: () => void
           <div className="py-6 text-center text-sm text-slate-400">Loading…</div>
         ) : rounds.length === 0 ? (
           <div className="py-6 text-center text-sm text-slate-400">
-            No rounds yet — set a group size and run the first round.
+              No rounds yet — set a table size and run the first round.
           </div>
         ) : (
           <>
@@ -351,13 +351,13 @@ function NetworkingModal({ event, onClose }: { event: Event; onClose: () => void
               {[...rounds].reverse().map((round) => (
                 <div key={round.id} className="rounded-xl border border-slate-200 bg-white p-3">
                   <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Round {round.round_number} · {round.groups.length} groups of ~{round.group_size}
+                    Round {round.round_number} · {round.groups.length} tables of ~{round.group_size}
                   </div>
                   <div className="space-y-1.5">
                     {round.groups.map((g) => (
                       <div key={g.label} className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2">
                         <span className="mt-0.5 shrink-0 rounded-md bg-slate-900 px-1.5 py-0.5 text-xs font-bold text-white">
-                          {g.label}
+                          Table {g.label}
                         </span>
                         <span className="text-xs leading-relaxed text-slate-700">
                           {g.members.map((m) => m.full_name ?? m.email).join(' · ')}

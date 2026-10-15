@@ -521,11 +521,11 @@ export function EventDetailPage() {
                   </div>
                   <div>
                     <div className="text-sm font-semibold text-blue-700">
-                      Round {networkingGroup.round_number} · Group{" "}
+                      Round {networkingGroup.round_number} · Table{" "}
                       {networkingGroup.group_label}
                     </div>
                     <div className="text-xs text-blue-500">
-                      Your networking group
+                      Your networking table
                     </div>
                   </div>
                 </div>

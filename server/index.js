@@ -154,11 +154,10 @@ function buildNetworkingGroups(userIds, groupSize, pastAssignments) {
     const sc = score(shuffled);
     if (sc < bestScore) { bestScore = sc; best = shuffled; if (sc === 0) break; }
   }
-  const LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const groups = [];
   for (let i = 0; i < best.length; i += groupSize) {
     groups.push({
-      label: LABELS[groups.length] ?? String(groups.length + 1),
+      label: String(groups.length + 1),
       members: best.slice(i, Math.min(i + groupSize, best.length)),
     });
   }
@@ -679,7 +678,7 @@ app.get('/api/events/:id/networking/rounds', authMiddleware, adminOnly, async (r
       ...r,
       groups: Object.entries(byRound[r.id] || {})
         .map(([label, members]) => ({ label, members }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
+        .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })),
     }));
     res.json(result);
   } catch (e) {
