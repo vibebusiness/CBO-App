@@ -97,6 +97,8 @@ export function adminOnly(req, res, next) {
 export function sameOriginForCookieRequests(req, res, next) {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
   if (!req.cookies?.[SESSION_COOKIE] || req.get('authorization')) return next();
+  // Fetch Metadata is set by the browser and survives proxies that rewrite Host.
+  if (req.get('sec-fetch-site') === 'same-origin') return next();
   const origin = req.get('origin');
   if (!origin) return next();
   try {
