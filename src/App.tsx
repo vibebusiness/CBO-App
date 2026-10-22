@@ -24,6 +24,8 @@ const AdminInvitePage = React.lazy(() => import('./pages/AdminInvite').then((mod
 const DoorCheckPage = React.lazy(() => import('./pages/DoorCheck').then((module) => ({ default: module.DoorCheckPage })));
 const NetworkingDisplayPage = React.lazy(() => import('./pages/NetworkingDisplay').then((module) => ({ default: module.NetworkingDisplayPage })));
 const ResetPasswordPage = React.lazy(() => import('./pages/ResetPassword').then((module) => ({ default: module.ResetPasswordPage })));
+const EventQrCodePage = React.lazy(() => import('./pages/EventQrCode').then((module) => ({ default: module.EventQrCodePage })));
+const QrCheckInPage = React.lazy(() => import('./pages/QrCheckIn').then((module) => ({ default: module.QrCheckInPage })));
 
 function StartupScreen({
   error,
@@ -164,6 +166,12 @@ export default function App() {
   return (
     <React.Suspense fallback={<StartupScreen />}>
       <Switch>
+        <Route path="/checkin/:id">
+          {user ? (user.full_name ? <QrCheckInPage /> : <SetupPage />) : <AuthPage />}
+        </Route>
+        <Route path="/admin/events/:id/qr">
+          {user?.role === 'admin' ? <EventQrCodePage /> : <Redirect to="/" />}
+        </Route>
         <Route path="/">
           {user ? <LoginLanding /> : <AuthPage />}
         </Route>
