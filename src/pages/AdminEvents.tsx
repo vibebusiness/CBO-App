@@ -160,12 +160,20 @@ function exportCheckInsCSV(event: Event, checkins: CheckIn[]) {
 function CheckInRoster({ event, onClose }: { event: Event; onClose: () => void }) {
   const [checkins, setCheckins] = React.useState<CheckIn[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState('');
 
   const load = React.useCallback(() => {
-    getCheckIns(event.id).then((rows) => { setCheckins(rows); setLoading(false); });
+    return getCheckIns(event.id)
+      .then((rows) => { setCheckins(rows); setLoadError(''); })
+      .catch(() => setLoadError('Could not refresh check-ins. Retrying automatically…'))
+      .finally(() => setLoading(false));
   }, [event.id]);
 
-  React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => {
+    void load();
+    const timer = window.setInterval(() => void load(), 5000);
+    return () => window.clearInterval(timer);
+  }, [load]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
@@ -197,6 +205,7 @@ function CheckInRoster({ event, onClose }: { event: Event; onClose: () => void }
           )}
         </div>
 
+        {loadError && <p role="alert" className="mb-3 text-sm text-red-700">{loadError}</p>}
         {loading ? (
           <div className="py-6 text-center text-sm text-slate-400">Loading…</div>
         ) : checkins.length === 0 ? (
@@ -782,6 +791,9 @@ function AdminEventListPage({ filter }: { filter: EventListFilter }) {
                       <button onClick={() => setRosterEvent(event)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">
                         Check-ins
                       </button>
+                      <a href={`/admin/events/${event.id}/qr`} target="_blank" rel="noopener noreferrer" className="rounded-xl border border-green-200 bg-green-50 px-3 py-1.5 text-center text-xs font-medium text-green-700 hover:bg-green-100">
+                        QR Code
+                      </a>
                       <a
                         href={`/door/${event.id}`}
                         className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-center text-xs font-medium text-blue-700 hover:bg-blue-100"

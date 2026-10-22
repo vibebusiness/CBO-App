@@ -128,6 +128,11 @@ export function AuthPage() {
         </div>
 
         {/* Invite banner */}
+        {window.location.pathname.startsWith('/checkin/') && (
+          <p className="mb-4 rounded-xl bg-green-50 px-3 py-3 text-center text-sm font-medium text-green-800">
+            Sign in or create an account to automatically check in to the event you scanned.
+          </p>
+        )}
         {hasInvite && (
           <div className="mb-4 rounded-xl bg-orange-50 border border-orange-200 px-3 py-2 text-center text-xs text-orange-700">
             You've been invited as an admin — create your account below.
